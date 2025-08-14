@@ -4,7 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from functools import lru_cache
 
-from fastapi import FastAPI, Request, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
