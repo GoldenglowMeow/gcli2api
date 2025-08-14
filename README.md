@@ -25,7 +25,7 @@
 
 - 安装
   ```bat
-  git clone <repository-url>
+  git clone https://github.com/su-kaka/gcli2api
   cd gcli2api
   pip install -r requirements.txt
   ```
