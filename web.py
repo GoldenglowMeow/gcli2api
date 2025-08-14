@@ -170,7 +170,7 @@ async def chat_completions(
     # 假流式处理
     if model.endswith("-假流式") and getattr(request_data, "stream", False):
         request_data.stream = False
-        return await fake_stream_response(request_data, real_model)
+        return await fake_stream_response(request_data)
     
     # 调用GeminiCLI客户端
     return await geminicli_client.chat_completion(request_data)
