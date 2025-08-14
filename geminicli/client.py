@@ -40,7 +40,9 @@ class GeminiCLIClient:
             # 获取初始凭证
             self.creds, self.project_id = await self.credential_manager.get_credentials_and_project()
             if not self.creds:
-                raise RuntimeError("No credentials available")
+                log.warning("No credentials available on startup - service will return errors until credentials are added via OAuth")
+                # 不抛出异常，允许服务启动
+                return
             
             if self.project_id:
                 await self.credential_manager.onboard_user(self.creds, self.project_id)
@@ -49,7 +51,8 @@ class GeminiCLIClient:
             log.info("GeminiCli initialized successfully.")
         except Exception as e:
             log.error(f"Initialization error: {e}")
-            raise
+            # 改为警告而不是抛出异常，允许服务启动
+            log.warning("Service started without credentials - OAuth authentication required")
 
     def _create_error_response(self, message: str, error_type: str = "api_error", status_code: int = 500):
         """Create standardized error response."""
@@ -74,7 +77,7 @@ class GeminiCLIClient:
         log.debug("Getting credentials for chat completion")
         self.creds, self.project_id = await self.credential_manager.get_credentials_and_project()
         if not self.creds:
-            raise RuntimeError("No credentials available")
+            raise RuntimeError("No credentials available - please configure OAuth credentials via /auth endpoint")
         
         if self.project_id:
             # onboarding - 只在需要时执行
