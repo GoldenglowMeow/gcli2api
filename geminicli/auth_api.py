@@ -53,10 +53,6 @@ class AuthCallbackHandler(BaseHTTPRequestHandler):
             # 成功页面
             self.wfile.write(b"<h1>OAuth authentication successful!</h1><p>You can close this window. Please return to the original page and click 'Get Credentials' button.</p>")
         else:
-            state_valid = state is not None and state in auth_flows
-            error_msg = f"Missing or invalid parameters - code: {'present' if code else 'missing'}, state: {state}, state_valid: {state_valid}"
-            logging.error(f"OAuth回调失败: {error_msg}")
-            
             self.send_response(400)
             self.send_header("Content-type", "text/html")
             self.end_headers()
