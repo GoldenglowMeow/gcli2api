@@ -110,13 +110,3 @@ gcli2api/
 │  └─ creds/                   # OAuth 凭据存放
 └─ requirements.txt            # 依赖列表
 ```
-
-## 安全建议
-
-- 在生产环境务必设置强密码（PASSWORD）
-- 建议使用 HTTPS，妥善保管 OAuth 凭据
-- 为后端设置合理并发上限与队列长度，避免过载
-
-## 许可证
-
-以仓库 LICENSE 为准
