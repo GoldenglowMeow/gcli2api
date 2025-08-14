@@ -87,7 +87,7 @@
 2. 输入站点密码（默认 `pwd`，建议改为强密码）
 3. 填写 Google Cloud Project 信息
 4. 按页面提示完成 Google 账户授权
-5. 下载/保存凭据 JSON 到 `geminicli/creds/`（程序会读取该目录）
+5. 自动保存凭据 JSON 到 `geminicli/creds/`（程序会读取该目录）
 
 ## 目录结构
 
