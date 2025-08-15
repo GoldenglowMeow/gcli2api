@@ -1,5 +1,5 @@
 fastapi
-httpx[http2]
+httpx[socks]
 pydantic
 python-dotenv
 google-auth
