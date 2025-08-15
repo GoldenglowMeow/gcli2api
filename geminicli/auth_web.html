@@ -867,8 +867,14 @@
                 statusBadges += '<span class="status-badge cd">CD中</span>';
             }
             
+            // 调试：记录 error_codes
+            console.log(`Error codes for ${filename}:`, status.error_codes);
+            
             if (status.error_codes && status.error_codes.length > 0) {
-                statusBadges += `<span class="error-codes">${status.error_codes.join(', ')}</span>`;
+                statusBadges += `<span class="error-codes">错误码: ${status.error_codes.join(', ')}</span>`;
+            } else {
+                // 显示无错误码状态
+                statusBadges += `<span class="status-badge" style="background-color: #28a745; color: white;">无错误</span>`;
             }
             
             // 为HTML ID生成安全的标识符

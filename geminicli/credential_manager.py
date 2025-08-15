@@ -124,7 +124,26 @@ class CredentialManager:
         # 标准化路径以确保一致性
         normalized_filename = os.path.abspath(filename)
         
+        # 先检查是否已存在（可能用不同的路径格式）
+        existing_state = None
+        existing_key = None
+        for key, state in self._creds_state.items():
+            if os.path.abspath(key) == normalized_filename:
+                existing_state = state
+                existing_key = key
+                break
+        
+        if existing_state is not None:
+            # 如果找到了现有状态但路径格式不同，更新键名
+            if existing_key != normalized_filename:
+                self._creds_state[normalized_filename] = existing_state
+                del self._creds_state[existing_key]
+                log.debug(f"Updated state key from {existing_key} to {normalized_filename}")
+            return existing_state
+        
+        # 只有真正没有找到时才创建新状态
         if normalized_filename not in self._creds_state:
+            log.debug(f"Creating new state for {normalized_filename}")
             self._creds_state[normalized_filename] = {
                 "error_codes": [],
                 "disabled": False,
@@ -154,14 +173,17 @@ class CredentialManager:
             
             await self._save_state()
 
-    async def record_success(self, filename: str):
+    async def record_success(self, filename: str, api_type: str = "other"):
         """记录成功的API调用"""
         async with self._lock:
             normalized_filename = os.path.abspath(filename)
             cred_state = self._get_cred_state(normalized_filename)
             
-            # 清除所有错误码
-            cred_state["error_codes"] = []
+            # 只有聊天内容生成API成功才清除错误码，其他API不清除
+            if api_type == "chat_content":
+                cred_state["error_codes"] = []
+                log.info(f"Cleared error codes for {normalized_filename} due to successful chat content generation")
+            
             cred_state["last_success"] = datetime.now(timezone.utc).isoformat()
             
             await self._save_state()

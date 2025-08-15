@@ -161,7 +161,7 @@ async def _handle_streaming_response(resp: httpx.Response, credential_manager: C
                 if not success_recorded:
                     current_file = credential_manager.get_current_file_path() if credential_manager else None
                     if current_file and credential_manager:
-                        await credential_manager.record_success(current_file)
+                        await credential_manager.record_success(current_file, "chat_content")
                     success_recorded = True
                 
                 payload = chunk[len('data: '):]
@@ -193,7 +193,7 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
             # 记录成功响应
             current_file = credential_manager.get_current_file_path() if credential_manager else None
             if current_file and credential_manager:
-                await credential_manager.record_success(current_file)
+                await credential_manager.record_success(current_file, "chat_content")
             
             raw = await resp.aread()
             google_api_response = raw.decode('utf-8')
