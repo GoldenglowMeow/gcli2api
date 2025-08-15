@@ -63,7 +63,7 @@ async def serve_oauth_page():
     """提供OAuth认证页面"""
     try:
         # 读取HTML文件
-        html_file_path = "./geminicli/oauth_auth.html"
+        html_file_path = "./geminicli/oauth_web.html"
         
         with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
