@@ -47,7 +47,7 @@ curl -o termux-install.sh "https://raw.githubusercontent.com/su-kaka/gcli2api/re
 **重启服务**
 ```bash
 cd gcli2api
-bash start.sh
+bash termux-start.sh
 ```
 
 ### Windows 环境
