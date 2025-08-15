@@ -33,6 +33,8 @@
 
 *注：所有模型均支持伪流式变体*
 
+---
+
 ## 安装指南
 
 ### Termux 环境
@@ -55,6 +57,9 @@ bash start.sh
 iex (iwr "https://raw.githubusercontent.com/su-kaka/gcli2api/refs/heads/master/install.ps1" -UseBasicParsing).Content
 ```
 
+**重启服务**
+双击执行 `start.bat`
+
 ### Linux 环境
 
 **初始安装**
@@ -68,8 +73,50 @@ cd gcli2api
 bash start.sh
 ```
 
-**重启服务**
-双击执行 `start.bat`
+### Docker 环境
+
+**Docker 运行命令**
+```bash
+docker run -d --name gcli2api --network host -e PASSWORD=pwd -v $(pwd)/data/creds:/app/geminicli/creds ghcr.io/cetaceang/gcli2api:latest
+```
+
+**Docker Compose 运行命令**
+1. 将以下内容保存为 `docker-compose.yml` 文件：
+    ```yaml
+    version: '3.8'
+
+    services:
+      gcli2api:
+        image: ghcr.io/cetaceang/gcli2api:latest
+        container_name: gcli2api
+        restart: unless-stopped
+        network_mode: host
+        environment:
+          - PASSWORD=pwd
+        volumes:
+          - ./data/creds:/app/geminicli/creds
+        healthcheck:
+          test: ["CMD-SHELL", "python -c \"import sys, urllib.request, os; req = urllib.request.Request('http://localhost:7861/v1/models', headers={'Authorization': 'Bearer ' + os.environ.get('PASSWORD', 'pwd')}); sys.exit(0 if urllib.request.urlopen(req, timeout=5).getcode() == 200 else 1)\""]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 40s
+    ```
+2. 启动服务：
+    ```bash
+    docker-compose up -d
+    ```
+
+---
+
+---
+
+## ⚠️ 注意事项
+
+- 当前 OAuth 验证流程**仅支持本地主机（localhost）访问**，即须通过 `http://127.0.0.1:7861/auth` 完成认证。
+- **如需在云服务器或其他远程环境部署，请先在本地运行服务并完成 OAuth 验证，获得生成的 json 凭证文件（位于 `./data/creds` 目录）后，再在面板或云端环境将该文件上传至对应的 creds 文件夹即可。**
+
+---
 
 ## 配置说明
 
@@ -78,6 +125,8 @@ bash start.sh
 3. 配置 OpenAI 兼容客户端：
    - **端点地址**：`http://127.0.0.1:7861/v1`
    - **API 密钥**：`pwd`（默认值）
+
+---
 
 ## 故障排除
 
@@ -89,3 +138,5 @@ npx https://github.com/google-gemini/gemini-cli
 2. 按回车确认
 3. 完成浏览器中的 Google 账户认证
 4. 系统将自动完成授权
+
+---
