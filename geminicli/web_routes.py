@@ -90,7 +90,9 @@ async def start_auth(request: AuthStartRequest, token: str = Depends(verify_toke
         if not request.project_id:
             raise HTTPException(status_code=400, detail="Project ID 不能为空")
         
-        result = create_auth_url(request.project_id)
+        # 使用认证令牌作为用户会话标识
+        user_session = token if token else None
+        result = create_auth_url(request.project_id, user_session)
         
         if result['success']:
             return JSONResponse(content={
@@ -114,8 +116,10 @@ async def auth_callback(request: AuthCallbackRequest, token: str = Depends(verif
         if not request.project_id:
             raise HTTPException(status_code=400, detail="Project ID 不能为空")
         
+        # 使用认证令牌作为用户会话标识
+        user_session = token if token else None
         # 异步等待OAuth回调完成
-        result = await asyncio_complete_auth_flow(request.project_id)
+        result = await asyncio_complete_auth_flow(request.project_id, user_session)
         
         if result['success']:
             return JSONResponse(content={

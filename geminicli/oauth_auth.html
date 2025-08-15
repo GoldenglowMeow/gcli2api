@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google OAuth 认证</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 600px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            font-weight: 300;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo svg {
+            width: 60px;
+            height: 60px;
+        }
+        .form-group {
+            margin-bottom: 25px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+        input[type="text"]:focus, input[type="password"]:focus {
+            border-color: #4285f4;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+        }
+        .btn {
+            background: linear-gradient(135deg, #4285f4, #34a853);
+            color: white;
+            padding: 14px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 15px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(66, 133, 244, 0.3);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .btn.secondary {
+            background: linear-gradient(135deg, #34a853, #fbbc04);
+        }
+        .btn.download {
+            background: linear-gradient(135deg, #ea4335, #ff6900);
+        }
+        .auth-url {
+            background: #f8f9fa;
+            border: 2px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+            word-break: break-all;
+            border-left: 4px solid #4285f4;
+        }
+        .auth-url a {
+            color: #4285f4;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .auth-url a:hover {
+            text-decoration: underline;
+        }
+        .credentials {
+            background: #f0f8ff;
+            border: 2px solid #b0d4ff;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 400px;
+            overflow-y: auto;
+            border-left: 4px solid #34a853;
+        }
+        .status {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .status.success {
+            background: #d4edda;
+            border: 2px solid #c3e6cb;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        .status.error {
+            background: #f8d7da;
+            border: 2px solid #f5c6cb;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        .status.info {
+            background: #d1ecf1;
+            border: 2px solid #bee5eb;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+        .status.warning {
+            background: #fff3cd;
+            border: 2px solid #ffeaa7;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        .hidden {
+            display: none;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+        }
+        .login-form {
+            text-align: center;
+            padding: 20px 0;
+        }
+        .steps {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ffc107;
+        }
+        .steps h4 {
+            margin-top: 0;
+            color: #333;
+            font-size: 16px;
+        }
+        .steps ol {
+            margin: 15px 0;
+            padding-left: 20px;
+        }
+        .steps li {
+            margin-bottom: 8px;
+            color: #555;
+            line-height: 1.5;
+        }
+        .api-warning {
+            background: #fff3cd;
+            border: 2px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ffc107;
+        }
+        .api-warning h4 {
+            color: #856404;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .api-warning a {
+            color: #4285f4;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .api-warning a:hover {
+            text-decoration: underline;
+        }
+        .progress-bar {
+            background: #e9ecef;
+            border-radius: 10px;
+            height: 8px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e1e5e9;
+            color: #666;
+            font-size: 14px;
+        }
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            .container {
+                padding: 20px;
+            }
+        }
+        
+        /* 下载按钮动画 */
+        .download-animation {
+            animation: downloadPulse 2s infinite;
+        }
+        
+        @keyframes downloadPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 登录界面 -->
+        <div id="loginSection">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+            </div>
+            <h1>Google OAuth 认证</h1>
+            <div class="login-form">
+                <div class="form-group">
+                    <input type="password" id="password" placeholder="请输入访问密码" onkeypress="handlePasswordEnter(event)" />
+                </div>
+                <button class="btn" onclick="login()">登录</button>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div id="mainSection" class="hidden">
+            <h1>Google OAuth 认证</h1>
+            
+            <!-- API 启用警告 -->
+            <div class="api-warning">
+                <h4>⚠️ 重要：请先启用以下 API 服务</h4>
+                <p style="margin: 15px 0;">在开始认证前，请确保为您的项目启用以下API：</p>
+                <ol style="margin: 15px 0; padding-left: 20px;">
+                    <li style="margin-bottom: 10px;">
+                        <strong>Gemini Cloud Assist API</strong><br>
+                        <a href="https://console.cloud.google.com/apis/api/geminicloudassist.googleapis.com" target="_blank">点击这里启用 →</a>
+                    </li>
+                    <li>
+                        <strong>Cloud AI Companion API</strong><br>
+                        <a href="https://console.cloud.google.com/apis/api/cloudaicompanion.googleapis.com" target="_blank">点击这里启用 →</a>
+                    </li>
+                </ol>
+                <p style="margin: 15px 0; color: #d73502;"><strong>注意：</strong>如果未启用这些API，OAuth认证过程将会失败。</p>
+            </div>
+
+            <div class="form-group">
+                <label for="projectId">Google Cloud Project ID:</label>
+                <input type="text" id="projectId" placeholder="输入你的 Google Cloud Project ID" />
+            </div>
+            
+            <button class="btn" id="getAuthBtn" onclick="startAuth()">获取认证链接</button>
+            
+            <div id="authUrlSection" class="hidden">
+                <h3>步骤一：认证链接</h3>
+                <div class="auth-url">
+                    <a id="authUrl" href="#" target="_blank">点击此链接进行 OAuth 认证</a>
+                </div>
+                
+                <div class="steps">
+                    <h4>认证步骤：</h4>
+                    <ol>
+                        <li>点击上方认证链接，在新窗口中完成 Google 登录</li>
+                        <li>授权应用访问您的 Google Cloud 项目</li>
+                        <li>看到 "OAuth authentication successful!" 页面后，关闭该窗口</li>
+                        <li>返回本页面，点击下方"获取认证文件"按钮</li>
+                    </ol>
+                </div>
+                
+                <button class="btn secondary" id="getCredsBtn" onclick="getCredentials()">获取认证文件</button>
+            </div>
+            
+            <div id="credentialsSection" class="hidden">
+                <h3>步骤二：认证成功！</h3>
+                <div class="status success">
+                    <strong>✅ OAuth 认证成功完成！</strong><br>
+                    认证文件已生成，您可以下载保存或复制使用。
+                </div>
+                
+                <div class="credentials" id="credentialsContent"></div>
+                
+                <button class="btn download download-animation" id="downloadBtn" onclick="downloadCredentials()">
+                    📥 下载认证文件
+                </button>
+                
+                <button class="btn" onclick="resetForm()">认证其他项目</button>
+            </div>
+
+            <div id="statusSection"></div>
+            
+            <div class="footer">
+                <p>🔒 您的认证信息将安全保存，仅用于访问指定的 Google Cloud 项目</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentProjectId = '';
+        let authInProgress = false;
+        let authToken = '';
+        let currentCredentials = null;
+
+        function showStatus(message, type = 'info') {
+            const statusSection = document.getElementById('statusSection');
+            if (statusSection) {
+                statusSection.innerHTML = `<div class="status ${type}">${message}</div>`;
+                
+                // 自动滚动到状态消息
+                statusSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        // 登录相关函数
+        async function login() {
+            const password = document.getElementById('password').value;
+            
+            if (!password) {
+                showStatus('请输入密码', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password: password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.token;
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('mainSection').classList.remove('hidden');
+                    showStatus('登录成功，请输入您的 Google Cloud Project ID', 'success');
+                } else {
+                    showStatus(`登录失败: ${data.detail || data.error || '密码错误'}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        function handlePasswordEnter(event) {
+            if (event.key === 'Enter') {
+                login();
+            }
+        }
+
+        // 获取认证头
+        function getAuthHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            };
+        }
+
+        async function startAuth() {
+            const projectId = document.getElementById('projectId').value.trim();
+            if (!projectId) {
+                showStatus('请输入 Project ID', 'error');
+                return;
+            }
+
+            currentProjectId = projectId;
+            const btn = document.getElementById('getAuthBtn');
+            btn.disabled = true;
+            btn.textContent = '正在生成认证链接...';
+
+            try {
+                const response = await fetch('/auth/start', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ project_id: projectId })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('authUrl').href = data.auth_url;
+                    document.getElementById('authUrl').textContent = data.auth_url;
+                    document.getElementById('authUrlSection').classList.remove('hidden');
+                    showStatus('认证链接已生成，请点击链接完成 OAuth 授权', 'info');
+                    authInProgress = true;
+                } else {
+                    showStatus(`生成认证链接失败: ${data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '获取认证链接';
+            }
+        }
+
+        async function getCredentials() {
+            if (!authInProgress) {
+                showStatus('请先获取认证链接并完成 OAuth 授权', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('getCredsBtn');
+            btn.disabled = true;
+            btn.textContent = '等待 OAuth 回调...';
+
+            try {
+                showStatus('正在等待 OAuth 回调，请确保已完成浏览器中的授权...', 'info');
+                
+                const response = await fetch('/auth/callback', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ project_id: currentProjectId })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentCredentials = data.credentials;
+                    document.getElementById('credentialsContent').textContent = JSON.stringify(data.credentials, null, 2);
+                    document.getElementById('credentialsSection').classList.remove('hidden');
+                    showStatus(`认证成功！文件已保存到服务器: ${data.file_path}`, 'success');
+                    authInProgress = false;
+                    
+                    // 隐藏前面的步骤，突出显示成功结果
+                    document.getElementById('authUrlSection').style.opacity = '0.6';
+                } else {
+                    showStatus(`认证失败: ${data.error || '获取认证文件失败'}`, 'error');
+                    if (data.error && data.error.includes('未接收到授权回调')) {
+                        showStatus('提示：请确保已完成浏览器中的 OAuth 认证，并看到了"OAuth authentication successful"页面', 'warning');
+                    }
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '获取认证文件';
+            }
+        }
+
+        function downloadCredentials() {
+            if (!currentCredentials) {
+                showStatus('没有可下载的认证文件', 'error');
+                return;
+            }
+
+            const filename = `${currentProjectId}-credentials.json`;
+            const content = JSON.stringify(currentCredentials, null, 2);
+            
+            const blob = new Blob([content], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            showStatus(`认证文件已下载: ${filename}`, 'success');
+        }
+
+        function resetForm() {
+            // 重置表单
+            document.getElementById('projectId').value = '';
+            document.getElementById('authUrlSection').classList.add('hidden');
+            document.getElementById('credentialsSection').classList.add('hidden');
+            document.getElementById('authUrlSection').style.opacity = '1';
+            
+            // 重置状态
+            currentProjectId = '';
+            authInProgress = false;
+            currentCredentials = null;
+            
+            showStatus('请输入新的 Project ID 开始认证', 'info');
+        }
+
+        // 页面加载时的初始化
+        window.onload = function() {
+            showStatus('请输入密码登录以开始 OAuth 认证', 'info');
+            
+            // 自动聚焦到密码输入框
+            document.getElementById('password').focus();
+        };
+    </script>
+</body>
+</html>

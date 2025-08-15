@@ -26,6 +26,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.profile",
 ]
 
+# 回调服务器配置
+CALLBACK_HOST = os.getenv('OAUTH_CALLBACK_HOST', 'localhost')
+CALLBACK_PORT = int(os.getenv('OAUTH_CALLBACK_PORT', '8080'))
+CALLBACK_URL = f"http://{CALLBACK_HOST}:{CALLBACK_PORT}"
+
 # 全局状态管理
 auth_flows = {}  # 存储进行中的认证流程
 oauth_server = None  # 全局OAuth回调服务器
@@ -63,14 +68,14 @@ class AuthCallbackHandler(BaseHTTPRequestHandler):
         pass
 
 
-def create_auth_url(project_id: str) -> Dict[str, Any]:
+def create_auth_url(project_id: str, user_session: str = None) -> Dict[str, Any]:
     """创建认证URL"""
     try:
         # 确保OAuth回调服务器正在运行
         if not ensure_oauth_server_running():
             return {
                 'success': False,
-                'error': '无法启动OAuth回调服务器，端口8080可能被占用'
+                'error': f'无法启动OAuth回调服务器，端口{CALLBACK_PORT}可能被占用'
             }
         # 创建OAuth流程
         client_config = {
@@ -85,13 +90,16 @@ def create_auth_url(project_id: str) -> Dict[str, Any]:
         flow = Flow.from_client_config(
             client_config,
             scopes=SCOPES,
-            redirect_uri="http://localhost:8080"
+            redirect_uri=CALLBACK_URL
         )
         
         flow.oauth2session.scope = SCOPES
         
-        # 生成状态标识符
-        state = str(uuid.uuid4())
+        # 生成状态标识符，包含用户会话信息
+        if user_session:
+            state = f"{user_session}_{str(uuid.uuid4())}"
+        else:
+            state = str(uuid.uuid4())
         
         # 生成认证URL
         auth_url, _ = flow.authorization_url(
@@ -105,6 +113,7 @@ def create_auth_url(project_id: str) -> Dict[str, Any]:
         auth_flows[state] = {
             'flow': flow,
             'project_id': project_id,
+            'user_session': user_session,
             'code': None,
             'completed': False,
             'created_at': time.time()
@@ -114,7 +123,7 @@ def create_auth_url(project_id: str) -> Dict[str, Any]:
         cleanup_expired_flows()
         
         logging.info(f"OAuth流程已创建: state={state}, project_id={project_id}")
-        logging.info(f"用户需要访问认证URL，然后OAuth会回调到 http://localhost:8080")
+        logging.info(f"用户需要访问认证URL，然后OAuth会回调到 {CALLBACK_URL}")
         
         return {
             'auth_url': auth_url,
@@ -133,12 +142,13 @@ def create_auth_url(project_id: str) -> Dict[str, Any]:
 def start_callback_server():
     """启动回调服务器"""
     try:
-        # 使用空字符串监听所有接口，端口8080
-        server = HTTPServer(("", 8080), AuthCallbackHandler)
+        # 使用配置的主机和端口
+        host = "" if CALLBACK_HOST == "localhost" else CALLBACK_HOST
+        server = HTTPServer((host, CALLBACK_PORT), AuthCallbackHandler)
         return server
     except OSError as e:
         if "Address already in use" in str(e):
-            logging.warning("端口8080已被占用，可能有其他OAuth流程正在进行")
+            logging.warning(f"端口{CALLBACK_PORT}已被占用，可能有其他OAuth流程正在进行")
             return None
         raise
 
@@ -173,17 +183,23 @@ def wait_for_callback_sync(state: str, timeout: int = 300) -> Optional[str]:
             pass
 
 
-def complete_auth_flow(project_id: str) -> Dict[str, Any]:
+def complete_auth_flow(project_id: str, user_session: str = None) -> Dict[str, Any]:
     """完成认证流程并保存凭证，等待OAuth回调"""
     try:
-        # 查找对应的认证流程
+        # 查找对应的认证流程，优先匹配用户会话
         state = None
         flow_data = None
         for s, data in auth_flows.items():
             if data['project_id'] == project_id:
-                state = s
-                flow_data = data
-                break
+                # 如果指定了用户会话，优先匹配相同会话的流程
+                if user_session and data.get('user_session') == user_session:
+                    state = s
+                    flow_data = data
+                    break
+                # 如果没有指定会话，或没找到匹配会话的流程，使用第一个匹配项目ID的
+                elif not state:
+                    state = s
+                    flow_data = data
         
         if not state or not flow_data:
             return {
@@ -276,19 +292,25 @@ def complete_auth_flow(project_id: str) -> Dict[str, Any]:
         }
 
 
-async def asyncio_complete_auth_flow(project_id: str) -> Dict[str, Any]:
+async def asyncio_complete_auth_flow(project_id: str, user_session: str = None) -> Dict[str, Any]:
     """异步完成认证流程，避免阻塞Web请求"""
     import asyncio
     
     try:
-        # 查找对应的认证流程
+        # 查找对应的认证流程，优先匹配用户会话
         state = None
         flow_data = None
         for s, data in auth_flows.items():
             if data['project_id'] == project_id:
-                state = s
-                flow_data = data
-                break
+                # 如果指定了用户会话，优先匹配相同会话的流程
+                if user_session and data.get('user_session') == user_session:
+                    state = s
+                    flow_data = data
+                    break
+                # 如果没有指定会话，或没找到匹配会话的流程，使用第一个匹配项目ID的
+                elif not state:
+                    state = s
+                    flow_data = data
         
         if not state or not flow_data:
             return {
@@ -619,18 +641,19 @@ def start_oauth_server():
     global oauth_server, oauth_server_thread
     
     if oauth_server is not None:
-        logging.info("OAuth回调服务器已在运行")
+        logging.info(f"OAuth回调服务器已在运行 ({CALLBACK_URL})")
         return True
     
     try:
-        oauth_server = HTTPServer(("", 8080), AuthCallbackHandler)
+        host = "" if CALLBACK_HOST == "localhost" else CALLBACK_HOST
+        oauth_server = HTTPServer((host, CALLBACK_PORT), AuthCallbackHandler)
         oauth_server_thread = threading.Thread(target=oauth_server.serve_forever, daemon=True)
         oauth_server_thread.start()
-        logging.info("OAuth回调服务器已启动，监听端口 8080")
+        logging.info(f"OAuth回调服务器已启动，监听地址: {CALLBACK_URL}")
         return True
     except OSError as e:
         if "Address already in use" in str(e):
-            logging.warning("端口8080已被占用，OAuth回调可能无法正常工作")
+            logging.warning(f"端口{CALLBACK_PORT}已被占用，OAuth回调可能无法正常工作")
             return False
         logging.error(f"启动OAuth服务器失败: {e}")
         return False
