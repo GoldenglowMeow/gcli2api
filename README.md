@@ -1,112 +1,78 @@
 # GeminiCLI to API
 
-将 Google Gemini CLI 封装为兼容 OpenAI API 的反向代理服务，提供 `/v1/chat/completions` 与 `/v1/models`。在多凭据场景下，支持轮询调度与并发控制，保障吞吐与稳定性。
+**将 Gemini 转换为 OpenAI 兼容 API 接口**
 
-## 主要特性
+专业解决方案，旨在解决 Gemini API 服务中频繁的 API 密钥中断和质量下降问题。
 
-- OpenAI 兼容端点：`/v1/chat/completions`、`/v1/models`
-- 简单鉴权：Bearer Token（环境变量 PASSWORD，默认 `pwd`）
-- 可选 OAuth：内置网页引导完成 Google OAuth 并保存凭据
-- Web 页面：提供 OAuth 引导页
-- 反代增强：多凭据轮询、后端并发
+## 核心功能
 
-## 轮询
+**OpenAI 兼容性**
+- 标准 `/v1/chat/completions` 和 `/v1/models` 端点
+- 完全符合 OpenAI API 规范
 
-- 轮询
-  - 支持配置多个oath文件
-  - 默认使用轮询（Round-Robin）分发请求，实现负载均衡
-  - 支持并发
+**流式支持**
+- 实时流式响应
+- 伪流式回退机制
 
-## 安装与运行
+**智能凭证管理**
+- 多个 Google OAuth 凭证自动轮换
+- 通过冗余认证增强稳定性
+- 负载均衡与并发请求支持
 
-- 环境
-  - Python 3.13+
-  - 可选：Google Cloud Project 与 OAuth 客户端配置（JSON）
+**Web 认证界面**
+- 简化的 OAuth 认证工作流
+- 简易的凭证配置流程
 
-- 安装
-  ```bat
-  git clone https://github.com/su-kaka/gcli2api
-  cd gcli2api
-  pip install -r requirements.txt
-  ```
+## 支持的模型
 
-- 设置密码（示例）
-  - Windows CMD:
-    ```bat
-    set PASSWORD=your_custom_password
-    ```
-  - PowerShell:
-    ```powershell
-    $env:PASSWORD = "your_custom_password"
-    ```
+所有模型均具备 1M 上下文窗口容量。每个凭证文件提供 1500 次请求额度。
 
-- 启动
-  ```bat
-  python web.py
-  ```
+- `gemini-2.5-pro`
+- `gemini-2.5-pro-preview-06-05`
+- `gemini-2.5-pro-preview-05-06`
 
-- 访问
-  - API 端点: http://127.0.0.1:7861/v1
-  - OAuth 页面: http://127.0.0.1:7861/auth
+*注：所有模型均支持伪流式变体*
 
-## API 示例
+## 安装指南
 
-- 列出模型
-  ```bat
-  curl -H "Authorization: Bearer pwd" ^
-    http://127.0.0.1:7861/v1/models
-  ```
+### Termux 环境
 
-- 非流式对话
-  ```bat
-  curl -H "Authorization: Bearer pwd" ^
-    -H "Content-Type: application/json" ^
-    -d "{
-      \"model\": \"gemini-2.5-pro\",
-      \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],
-      \"max_tokens\": 1000
-    }" ^
-    http://127.0.0.1:7861/v1/chat/completions
-  ```
-
-- 流式对话
-  ```bat
-  curl -H "Authorization: Bearer pwd" ^
-    -H "Content-Type: application/json" ^
-    -d "{
-      \"model\": \"gemini-2.5-pro\",
-      \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],
-      \"stream\": true
-    }" ^
-    http://127.0.0.1:7861/v1/chat/completions
-  ```
-
-## 可选 OAuth 流程
-
-1. 打开 http://127.0.0.1:7861/auth
-2. 输入站点密码（默认 `pwd`，建议改为强密码）
-3. 填写 Google Cloud Project 信息
-4. 按页面提示完成 Google 账户授权
-5. 自动保存凭据 JSON 到 `geminicli/creds/`（程序会读取该目录）
-
-## 目录结构
-
+**初始安装**
+```bash
+curl -o install-termux.sh "https://raw.githubusercontent.com/su-kaka/gcli2api/refs/heads/master/install-termux.sh" && chmod +x install-termux.sh && ./install-termux.sh
 ```
-gcli2api/
-├─ web.py                      # FastAPI 启动入口
-├─ models.py                   # Pydantic 模型
-├─ log.py                      # 日志
-├─ geminicli/                  # Gemini CLI 相关
-│  ├─ client.py                # 核心客户端
-│  ├─ auth_api.py              # OAuth API
-│  ├─ auth_web.html            # OAuth 网页
-│  ├─ config.py                # 配置
-│  ├─ credential_manager.py    # 凭据管理
-│  ├─ google_api_client.py     # Google API 客户端
-│  ├─ models.py                # 子模块模型
-│  ├─ openai_transformers.py   # OpenAI 兼容转换
-│  ├─ utils.py                 # 工具函数
-│  ├─ web_routes.py            # Web 路由
-│  └─ creds/                   # OAuth 凭据存放
-└─ requirements.txt            # 依赖列表
+
+**重启服务**
+```bash
+cd gcli2api
+bash start.sh
 ```
+
+### Windows 环境
+
+**初始安装**
+```bash
+curl -o install-termux.sh "https://raw.githubusercontent.com/su-kaka/gcli2api/refs/heads/master/install-termux.sh" && chmod +x install-termux.sh && ./install-termux.sh
+```
+
+**重启服务**
+双击执行 `start.bat`
+
+## 配置说明
+
+1. 访问 `http://127.0.0.1:7861/auth`
+2. 完成 OAuth 认证流程（默认密码：`pwd`）
+3. 配置 OpenAI 兼容客户端：
+   - **端点地址**：`http://127.0.0.1:7861/v1`
+   - **API 密钥**：`pwd`（默认值）
+
+## 故障排除
+
+**400 错误解决方案**
+```bash
+npx https://github.com/google-gemini/gemini-cli
+```
+1. 选择选项 1
+2. 按回车确认
+3. 完成浏览器中的 Google 账户认证
+4. 系统将自动完成授权
