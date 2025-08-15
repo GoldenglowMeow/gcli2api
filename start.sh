@@ -1,2 +1,2 @@
-source ./venv/Scripts/activate
-python web.py
+source .venv/Scripts/activate
+pm2 start python web.py
