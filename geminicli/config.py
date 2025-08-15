@@ -2,6 +2,7 @@
 Configuration constants for the Geminicli2api proxy server.
 Centralizes all configuration to avoid duplication across modules.
 """
+import os
 
 # API Endpoints
 CODE_ASSIST_ENDPOINT = "https://cloudcode-pa.googleapis.com"
@@ -11,6 +12,17 @@ CLI_VERSION = "0.1.5"  # Match current gemini-cli version
 
 # 凭证目录
 CREDENTIALS_DIR = "geminicli/creds"
+
+# 自动封禁配置
+AUTO_BAN_ENABLED = os.getenv("AUTO_BAN", "true").lower() in ("true", "1", "yes", "on")
+
+# 需要自动封禁的错误码
+AUTO_BAN_ERROR_CODES = [400, 403]
+
+# 启动时打印配置（用于调试）
+print(f"[DEBUG] AUTO_BAN environment variable: {os.getenv('AUTO_BAN', 'not set')}")
+print(f"[DEBUG] AUTO_BAN_ENABLED: {AUTO_BAN_ENABLED}")
+print(f"[DEBUG] AUTO_BAN_ERROR_CODES: {AUTO_BAN_ERROR_CODES}")
 
 # Default Safety Settings for Google API
 DEFAULT_SAFETY_SETTINGS = [

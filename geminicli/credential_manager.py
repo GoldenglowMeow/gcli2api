@@ -15,7 +15,7 @@ import httpx
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
-from .config import CREDENTIALS_DIR, CODE_ASSIST_ENDPOINT
+from .config import CREDENTIALS_DIR, CODE_ASSIST_ENDPOINT, AUTO_BAN_ENABLED, AUTO_BAN_ERROR_CODES
 from .utils import get_user_agent, get_client_metadata
 from log import log
 
@@ -170,6 +170,19 @@ class CredentialManager:
                 tomorrow_8am = (now + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
                 cred_state["cd_until"] = tomorrow_8am.isoformat()
                 log.warning(f"Set CD status for {normalized_filename} until {tomorrow_8am}")
+            
+            # 自动封禁功能
+            log.debug(f"AUTO_BAN check: enabled={AUTO_BAN_ENABLED}, status_code={status_code}, error_codes={AUTO_BAN_ERROR_CODES}")
+            if AUTO_BAN_ENABLED and status_code in AUTO_BAN_ERROR_CODES:
+                if not cred_state.get("disabled", False):
+                    cred_state["disabled"] = True
+                    log.warning(f"AUTO_BAN: Disabled credential {os.path.basename(normalized_filename)} due to error {status_code}")
+                else:
+                    log.debug(f"Credential {os.path.basename(normalized_filename)} already disabled, error {status_code} recorded")
+            elif AUTO_BAN_ENABLED:
+                log.debug(f"AUTO_BAN enabled but status_code {status_code} not in ban list {AUTO_BAN_ERROR_CODES}")
+            else:
+                log.debug(f"AUTO_BAN disabled, status_code {status_code} recorded but no auto ban")
             
             await self._save_state()
 
@@ -578,3 +591,14 @@ class CredentialManager:
                 await self._discover_credential_files()
         
         return await self.get_credentials()
+    
+    async def test_auto_ban(self, filename: str, status_code: int = 403):
+        """测试自动封禁功能（仅用于调试）"""
+        log.info(f"[TEST] Testing auto ban for file {filename} with status code {status_code}")
+        log.info(f"[TEST] AUTO_BAN_ENABLED: {AUTO_BAN_ENABLED}")
+        log.info(f"[TEST] AUTO_BAN_ERROR_CODES: {AUTO_BAN_ERROR_CODES}")
+        await self.record_error(filename, status_code)
+        
+        # 检查状态
+        cred_state = self._get_cred_state(filename)
+        log.info(f"[TEST] After test, credential state: {cred_state}")

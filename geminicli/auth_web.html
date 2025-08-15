@@ -872,6 +872,11 @@
             
             if (status.error_codes && status.error_codes.length > 0) {
                 statusBadges += `<span class="error-codes">错误码: ${status.error_codes.join(', ')}</span>`;
+                // 检查是否包含自动封禁的错误码
+                const autoBanErrors = status.error_codes.filter(code => code === 400 || code === 403);
+                if (autoBanErrors.length > 0 && status.disabled) {
+                    statusBadges += `<span class="status-badge" style="background-color: #e74c3c; color: white;">AUTO_BAN</span>`;
+                }
             } else {
                 // 显示无错误码状态
                 statusBadges += `<span class="status-badge" style="background-color: #28a745; color: white;">无错误</span>`;
