@@ -12,8 +12,5 @@ RUN pip install -r requirements.txt
 # 复制其余代码
 COPY . .
 
-# 确保启动脚本可执行
-RUN chmod +x start.sh
-
 # 默认启动命令
-CMD ["bash", "start.sh"]
+CMD ["python", "web.py"]
