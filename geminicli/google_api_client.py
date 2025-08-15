@@ -138,8 +138,19 @@ async def _handle_streaming_response(resp: httpx.Response, credential_manager: C
         
         if credential_manager:
             if current_file:
+                # 尝试获取响应内容用于CD机制判断
+                response_content = ""
+                try:
+                    response_content = await resp.aread()
+                    if isinstance(response_content, bytes):
+                        response_content = response_content.decode('utf-8', errors='ignore')
+                except Exception as e:
+                    log.debug(f"[STREAMING] Failed to read response content for error analysis: {e}")
+                    response_content = ""
+                
                 log.debug(f"[STREAMING] Calling record_error for file {current_file} with status_code {resp.status_code}")
-                await credential_manager.record_error(current_file, resp.status_code)
+                log.debug(f"[STREAMING] Response content snippet: {response_content[:200]}...")
+                await credential_manager.record_error(current_file, resp.status_code, response_content)
             else:
                 log.warning(f"[STREAMING] No current file path available for recording error {resp.status_code}")
         
@@ -234,8 +245,24 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
         
         if credential_manager:
             if current_file:
+                # 获取响应内容用于CD机制判断
+                response_content = ""
+                try:
+                    if hasattr(resp, 'content'):
+                        response_content = resp.content
+                        if isinstance(response_content, bytes):
+                            response_content = response_content.decode('utf-8', errors='ignore')
+                    else:
+                        response_content = await resp.aread()
+                        if isinstance(response_content, bytes):
+                            response_content = response_content.decode('utf-8', errors='ignore')
+                except Exception as e:
+                    log.debug(f"[NON-STREAMING] Failed to read response content for error analysis: {e}")
+                    response_content = ""
+                
                 log.debug(f"[NON-STREAMING] Calling record_error for file {current_file} with status_code {resp.status_code}")
-                await credential_manager.record_error(current_file, resp.status_code)
+                log.debug(f"[NON-STREAMING] Response content snippet: {response_content[:200]}...")
+                await credential_manager.record_error(current_file, resp.status_code, response_content)
             else:
                 log.warning(f"[NON-STREAMING] No current file path available for recording error {resp.status_code}")
         

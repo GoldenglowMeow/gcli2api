@@ -151,7 +151,7 @@ class CredentialManager:
             }
         return self._creds_state[normalized_filename]
 
-    async def record_error(self, filename: str, status_code: int):
+    async def record_error(self, filename: str, status_code: int, response_content: str = ""):
         """记录API错误码"""
         async with self._lock:
             normalized_filename = os.path.abspath(filename)
@@ -163,13 +163,15 @@ class CredentialManager:
             if status_code not in cred_state["error_codes"]:
                 cred_state["error_codes"].append(status_code)
             
-            # 如果是429错误，设置CD状态
-            if status_code == 429:
+            # 改进的CD机制：需要429状态码且响应内容包含"1500"关键词
+            if status_code == 429 and "1500" in response_content:
                 # 设置CD状态直到明天UTC 08:00
                 now = datetime.now(timezone.utc)
                 tomorrow_8am = (now + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
                 cred_state["cd_until"] = tomorrow_8am.isoformat()
-                log.warning(f"Set CD status for {normalized_filename} until {tomorrow_8am}")
+                log.warning(f"Set CD status for {normalized_filename} until {tomorrow_8am} (429 + '1500' keyword)")
+            elif status_code == 429:
+                log.info(f"Got 429 error for {os.path.basename(normalized_filename)} but no '1500' keyword in response, no CD set")
             
             # 自动封禁功能
             log.debug(f"AUTO_BAN check: enabled={AUTO_BAN_ENABLED}, status_code={status_code}, error_codes={AUTO_BAN_ERROR_CODES}")
@@ -592,13 +594,24 @@ class CredentialManager:
         
         return await self.get_credentials()
     
-    async def test_auto_ban(self, filename: str, status_code: int = 403):
+    async def test_auto_ban(self, filename: str, status_code: int = 403, response_content: str = ""):
         """测试自动封禁功能（仅用于调试）"""
         log.info(f"[TEST] Testing auto ban for file {filename} with status code {status_code}")
         log.info(f"[TEST] AUTO_BAN_ENABLED: {AUTO_BAN_ENABLED}")
         log.info(f"[TEST] AUTO_BAN_ERROR_CODES: {AUTO_BAN_ERROR_CODES}")
-        await self.record_error(filename, status_code)
+        await self.record_error(filename, status_code, response_content)
         
         # 检查状态
         cred_state = self._get_cred_state(filename)
         log.info(f"[TEST] After test, credential state: {cred_state}")
+    
+    async def test_cd_mechanism(self, filename: str, response_content: str = "error 1500 quota exceeded"):
+        """测试CD机制（仅用于调试）"""
+        log.info(f"[TEST] Testing CD mechanism for file {filename}")
+        log.info(f"[TEST] Response content: {response_content}")
+        await self.record_error(filename, 429, response_content)
+        
+        # 检查状态
+        cred_state = self._get_cred_state(filename)
+        log.info(f"[TEST] After CD test, credential state: {cred_state}")
+        log.info(f"[TEST] CD until: {cred_state.get('cd_until', 'Not set')}")
