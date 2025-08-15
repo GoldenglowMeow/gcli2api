@@ -10,7 +10,7 @@ LOG_LEVELS = {
 }
 
 # 当前日志级别
-current_level = LOG_LEVELS['debug']
+current_level = LOG_LEVELS['info']
 
 def set_log_level(level):
     """设置日志级别"""
