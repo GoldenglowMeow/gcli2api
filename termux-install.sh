@@ -4,5 +4,5 @@ npm install pm2 -g
 git clone https://github.com/su-kaka/gcli2api.git
 cd ./gcli2api
 uv sync
-source .venv/Scripts/activate
+source .venv/bin/activate
 pm2 start python3 web.py
