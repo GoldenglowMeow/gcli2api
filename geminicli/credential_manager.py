@@ -7,8 +7,9 @@ import json
 import asyncio
 import glob
 import aiofiles
-from datetime import datetime, timezone
-from typing import Optional, List, Tuple
+import toml
+from datetime import datetime, timezone, timedelta
+from typing import Optional, List, Tuple, Dict, Any
 import httpx
 
 from google.oauth2.credentials import Credentials
@@ -39,6 +40,13 @@ class CredentialManager:
         # HTTP client reuse
         self._http_client: Optional[httpx.AsyncClient] = None
         
+        # TOML状态文件路径
+        self._state_file = os.path.join(CREDENTIALS_DIR, "creds_state.toml")
+        self._creds_state: Dict[str, Any] = {}
+        
+        # 当前使用的凭证文件路径
+        self._current_file_path: Optional[str] = None
+        
         self._initialized = False
 
     async def initialize(self):
@@ -46,6 +54,9 @@ class CredentialManager:
         async with self._lock:
             if self._initialized:
                 return
+            
+            # 加载状态文件
+            await self._load_state()
             
             await self._discover_credential_files()
             
@@ -63,18 +74,176 @@ class CredentialManager:
             await self._http_client.aclose()
             self._http_client = None
 
+    async def _load_state(self):
+        """从TOML文件加载状态"""
+        try:
+            if os.path.exists(self._state_file):
+                async with aiofiles.open(self._state_file, "r", encoding="utf-8") as f:
+                    content = await f.read()
+                self._creds_state = toml.loads(content)
+            else:
+                self._creds_state = {}
+            
+            # 清理过期的CD状态（UTC时间08:00刷新）
+            await self._cleanup_expired_cd_status()
+        except Exception as e:
+            log.warning(f"Failed to load state file: {e}")
+            self._creds_state = {}
+
+    async def _save_state(self):
+        """保存状态到TOML文件"""
+        try:
+            os.makedirs(os.path.dirname(self._state_file), exist_ok=True)
+            async with aiofiles.open(self._state_file, "w", encoding="utf-8") as f:
+                await f.write(toml.dumps(self._creds_state))
+        except Exception as e:
+            log.error(f"Failed to save state file: {e}")
+
+    async def _cleanup_expired_cd_status(self):
+        """清理过期的CD状态"""
+        now = datetime.now(timezone.utc)
+        today_8am = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        
+        # 如果现在是08:00之后，清理昨天的CD状态
+        if now >= today_8am:
+            cutoff_time = today_8am
+        else:
+            # 如果现在是08:00之前，清理前天的CD状态
+            cutoff_time = today_8am - timedelta(days=1)
+        
+        for filename in list(self._creds_state.keys()):
+            cred_state = self._creds_state[filename]
+            if "cd_until" in cred_state:
+                cd_until = datetime.fromisoformat(cred_state["cd_until"])
+                if cd_until <= cutoff_time:
+                    cred_state.pop("cd_until", None)
+                    log.info(f"Cleared expired CD status for {filename}")
+
+    def _get_cred_state(self, filename: str) -> Dict[str, Any]:
+        """获取指定凭证文件的状态"""
+        # 标准化路径以确保一致性
+        normalized_filename = os.path.abspath(filename)
+        
+        if normalized_filename not in self._creds_state:
+            self._creds_state[normalized_filename] = {
+                "error_codes": [],
+                "disabled": False,
+                "last_success": None
+            }
+        return self._creds_state[normalized_filename]
+
+    async def record_error(self, filename: str, status_code: int):
+        """记录API错误码"""
+        async with self._lock:
+            normalized_filename = os.path.abspath(filename)
+            cred_state = self._get_cred_state(normalized_filename)
+            
+            # 记录错误码
+            if "error_codes" not in cred_state:
+                cred_state["error_codes"] = []
+            if status_code not in cred_state["error_codes"]:
+                cred_state["error_codes"].append(status_code)
+            
+            # 如果是429错误，设置CD状态
+            if status_code == 429:
+                # 设置CD状态直到明天UTC 08:00
+                now = datetime.now(timezone.utc)
+                tomorrow_8am = (now + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+                cred_state["cd_until"] = tomorrow_8am.isoformat()
+                log.warning(f"Set CD status for {normalized_filename} until {tomorrow_8am}")
+            
+            await self._save_state()
+
+    async def record_success(self, filename: str):
+        """记录成功的API调用"""
+        async with self._lock:
+            normalized_filename = os.path.abspath(filename)
+            cred_state = self._get_cred_state(normalized_filename)
+            
+            # 清除所有错误码
+            cred_state["error_codes"] = []
+            cred_state["last_success"] = datetime.now(timezone.utc).isoformat()
+            
+            await self._save_state()
+
+    def is_cred_in_cd(self, filename: str) -> bool:
+        """检查凭证是否处于CD状态"""
+        cred_state = self._get_cred_state(filename)
+        if "cd_until" not in cred_state:
+            return False
+        
+        cd_until = datetime.fromisoformat(cred_state["cd_until"])
+        return datetime.now(timezone.utc) < cd_until
+
+    def is_cred_disabled(self, filename: str) -> bool:
+        """检查凭证是否被禁用"""
+        cred_state = self._get_cred_state(filename)
+        return cred_state.get("disabled", False)
+
+    async def set_cred_disabled(self, filename: str, disabled: bool):
+        """设置凭证的禁用状态"""
+        async with self._lock:
+            normalized_filename = os.path.abspath(filename)
+            log.info(f"Setting disabled={disabled} for file: {normalized_filename}")
+            cred_state = self._get_cred_state(normalized_filename)
+            cred_state["disabled"] = disabled
+            log.info(f"Updated state for {normalized_filename}: {cred_state}")
+            await self._save_state()
+            log.info(f"State saved successfully")
+
+    def get_creds_status(self) -> Dict[str, Dict[str, Any]]:
+        """获取所有凭证的状态信息"""
+        status = {}
+        # 获取所有文件，包括禁用和CD状态的
+        credentials_dir = CREDENTIALS_DIR
+        patterns = [os.path.join(credentials_dir, "*.json")]
+        all_files = []
+        for pattern in patterns:
+            all_files.extend(glob.glob(pattern))
+        all_files = sorted(list(set(all_files)))
+        
+        for filename in all_files:
+            # 标准化路径以确保一致性
+            normalized_filename = os.path.abspath(filename)
+            cred_state = self._get_cred_state(normalized_filename)
+            file_status = {
+                "error_codes": cred_state.get("error_codes", []),
+                "disabled": cred_state.get("disabled", False),
+                "in_cd": self.is_cred_in_cd(normalized_filename),
+                "last_success": cred_state.get("last_success")
+            }
+            status[normalized_filename] = file_status
+            
+            # 调试：记录特定文件的状态
+            basename = os.path.basename(filename)
+            if "atomic-affinity" in basename:
+                log.info(f"Status for {basename}: disabled={file_status['disabled']} (normalized: {normalized_filename})")
+                
+        return status
+
+    def get_current_file_path(self) -> Optional[str]:
+        """获取当前使用的凭证文件路径"""
+        return self._current_file_path
+
     async def _discover_credential_files(self):
         """Discover all credential files with hot reload support."""
         old_files = set(self._credential_files)
-        self._credential_files = []
+        all_files = []
         
         credentials_dir = CREDENTIALS_DIR
         patterns = [os.path.join(credentials_dir, "*.json")]
         
         for pattern in patterns:
-            self._credential_files.extend(glob.glob(pattern))
+            all_files.extend(glob.glob(pattern))
         
-        self._credential_files = sorted(list(set(self._credential_files)))
+        all_files = sorted(list(set(all_files)))
+        
+        # 过滤掉被禁用和CD状态的文件
+        self._credential_files = []
+        for filename in all_files:
+            if not self.is_cred_disabled(filename) and not self.is_cred_in_cd(filename):
+                self._credential_files.append(filename)
+        
         new_files = set(self._credential_files)
         
         # 检测文件变化
@@ -83,25 +252,43 @@ class CredentialManager:
             removed_files = old_files - new_files
             
             if added_files:
-                log.info(f"发现新的凭证文件: {list(added_files)}")
+                log.info(f"发现新的可用凭证文件: {list(added_files)}")
                 # 清除缓存以便使用新文件
                 self._cached_credentials = None
                 self._cached_project_id = None
             
             if removed_files:
-                log.info(f"凭证文件已移除: {list(removed_files)}")
+                log.info(f"凭证文件已移除或不可用: {list(removed_files)}")
                 # 如果当前使用的文件被移除，切换到下一个文件
-                if self._credential_files and self._current_credential_index < len(self._credential_files):
-                    current_file = self._credential_files[self._current_credential_index]
-                    if current_file in removed_files:
-                        self._current_credential_index = 0
-                        self._cached_credentials = None
-                        self._cached_project_id = None
+                if self._credential_files and self._current_credential_index >= len(self._credential_files):
+                    self._current_credential_index = 0
+                    self._cached_credentials = None
+                    self._cached_project_id = None
+        
+        # 同步状态文件，清理不存在的文件状态
+        await self._sync_state_with_files(all_files)
         
         if not self._credential_files:
-            log.warning("No credential files found")
+            log.warning("No available credential files found")
         else:
-            log.info(f"Found {len(self._credential_files)} credential files")
+            log.info(f"Found {len(self._credential_files)} available credential files")
+
+    async def _sync_state_with_files(self, current_files: List[str]):
+        """同步状态文件与实际文件"""
+        # 标准化当前文件列表
+        normalized_current_files = [os.path.abspath(f) for f in current_files]
+        
+        # 移除不存在文件的状态
+        files_to_remove = []
+        for filename in list(self._creds_state.keys()):
+            if filename not in normalized_current_files:
+                files_to_remove.append(filename)
+        
+        if files_to_remove:
+            for filename in files_to_remove:
+                del self._creds_state[filename]
+            await self._save_state()
+            log.info(f"Removed state for deleted files: {files_to_remove}")
 
     def _is_cache_valid(self) -> bool:
         """Check if cached credentials are still valid based on call count and token expiration."""
@@ -143,11 +330,13 @@ class CredentialManager:
     async def get_credentials(self) -> Tuple[Optional[Credentials], Optional[str]]:
         """Get credentials with call-based rotation, caching and hot reload for performance."""
         async with self._lock:
-            # 更积极的文件检查策略
+            # 修改文件检查策略：
+            # 1. 启动时读取一次creds文件
+            # 2. 当无任何creds时，每次使用chat都读取一次creds目录积极发现新文件
+            # 3. 当有creds文件时，每次轮换的时候读取一次
             should_check_files = (
-                self._call_count % 10 == 0 or  # 每10次调用检查一次（更频繁）
                 not self._credential_files or  # 无文件时每次都检查
-                not self._cached_credentials   # 无缓存时每次都检查
+                self._call_count >= self._calls_per_rotation  # 轮换时检查
             )
             
             if should_check_files:
@@ -167,6 +356,10 @@ class CredentialManager:
             # Rotate to next credential if we've reached the call limit
             await self._rotate_credential_if_needed()
             
+            if not self._credential_files:
+                log.error("No available credential files")
+                return None, None
+            
             current_file = self._credential_files[self._current_credential_index]
             
             # Load credentials from file with fallback
@@ -176,6 +369,7 @@ class CredentialManager:
                 # Update cache
                 self._cached_credentials = creds
                 self._cached_project_id = project_id
+                self._current_file_path = current_file
                 log.info(f"Cached credentials from {current_file}")
             
             return creds, project_id

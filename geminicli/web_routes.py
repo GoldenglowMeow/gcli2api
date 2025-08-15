@@ -4,8 +4,9 @@ Web路由模块 - 处理认证相关的HTTP请求
 """
 import os
 import logging
+import json
 from typing import List
-from fastapi import APIRouter, HTTPException, Request, Depends, File, UploadFile
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -15,10 +16,19 @@ from .auth_api import (
     verify_password, generate_auth_token, verify_auth_token,
     batch_upload_credentials, asyncio_complete_auth_flow,
 )
+from .credential_manager import CredentialManager
 
 # 创建路由器
 router = APIRouter()
 security = HTTPBearer()
+
+# 创建credential manager实例
+credential_manager = CredentialManager()
+
+async def ensure_credential_manager_initialized():
+    """确保credential manager已初始化"""
+    if not credential_manager._initialized:
+        await credential_manager.initialize()
 
 class LoginRequest(BaseModel):
     password: str
@@ -28,6 +38,10 @@ class AuthStartRequest(BaseModel):
 
 class AuthCallbackRequest(BaseModel):
     project_id: str
+
+class CredFileActionRequest(BaseModel):
+    filename: str
+    action: str  # enable, disable, delete
 
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -173,4 +187,177 @@ async def upload_credentials(files: List[UploadFile] = File(...), token: str = D
         raise
     except Exception as e:
         logging.error(f"批量上传失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/creds/status")
+async def get_creds_status(token: str = Depends(verify_token)):
+    """获取所有凭证文件的状态"""
+    try:
+        await ensure_credential_manager_initialized()
+        
+        # 获取状态时不要调用_discover_credential_files，因为它会过滤被禁用的文件
+        # 直接获取所有文件的状态
+        status = credential_manager.get_creds_status()
+        
+        # 读取文件内容
+        creds_info = {}
+        for filename, file_status in status.items():
+            try:
+                with open(filename, 'r', encoding='utf-8') as f:
+                    content = json.loads(f.read())
+                
+                creds_info[filename] = {
+                    "status": file_status,
+                    "content": content,
+                    "filename": os.path.basename(filename),
+                    "size": os.path.getsize(filename),
+                    "modified_time": os.path.getmtime(filename)
+                }
+            except Exception as e:
+                logging.error(f"读取凭证文件失败 {filename}: {e}")
+                creds_info[filename] = {
+                    "status": file_status,
+                    "content": None,
+                    "filename": os.path.basename(filename),
+                    "error": str(e)
+                }
+        
+        return JSONResponse(content={"creds": creds_info})
+        
+    except Exception as e:
+        logging.error(f"获取凭证状态失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/creds/action")
+async def creds_action(request: CredFileActionRequest, token: str = Depends(verify_token)):
+    """对凭证文件执行操作（启用/禁用/删除）"""
+    try:
+        await ensure_credential_manager_initialized()
+        
+        logging.info(f"Received request: {request}")
+        
+        filename = request.filename
+        action = request.action
+        
+        logging.info(f"Performing action '{action}' on file: {filename}")
+        
+        # 验证文件路径安全性
+        logging.info(f"Validating file path: {repr(filename)}")
+        logging.info(f"Is absolute: {os.path.isabs(filename)}")
+        logging.info(f"Ends with .json: {filename.endswith('.json')}")
+        
+        # 如果不是绝对路径，转换为绝对路径
+        if not os.path.isabs(filename):
+            from .config import CREDENTIALS_DIR
+            filename = os.path.abspath(os.path.join(CREDENTIALS_DIR, os.path.basename(filename)))
+            logging.info(f"Converted to absolute path: {filename}")
+        
+        if not filename.endswith('.json'):
+            logging.error(f"Invalid file path: {filename} (not a .json file)")
+            raise HTTPException(status_code=400, detail=f"无效的文件路径: {filename}")
+        
+        # 确保文件在CREDENTIALS_DIR内（安全检查）
+        from .config import CREDENTIALS_DIR
+        credentials_dir_abs = os.path.abspath(CREDENTIALS_DIR)
+        filename_abs = os.path.abspath(filename)
+        if not filename_abs.startswith(credentials_dir_abs):
+            logging.error(f"Security violation: file outside credentials directory: {filename}")
+            raise HTTPException(status_code=400, detail="文件路径不在允许的目录内")
+        
+        if not os.path.exists(filename):
+            logging.error(f"File not found: {filename}")
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        if action == "enable":
+            await credential_manager.set_cred_disabled(filename, False)
+            return JSONResponse(content={"message": f"已启用凭证文件 {os.path.basename(filename)}"})
+        
+        elif action == "disable":
+            await credential_manager.set_cred_disabled(filename, True)
+            return JSONResponse(content={"message": f"已禁用凭证文件 {os.path.basename(filename)}"})
+        
+        elif action == "delete":
+            try:
+                os.remove(filename)
+                # 同时从状态中移除（使用标准化路径）
+                normalized_filename = os.path.abspath(filename)
+                if normalized_filename in credential_manager._creds_state:
+                    del credential_manager._creds_state[normalized_filename]
+                    await credential_manager._save_state()
+                return JSONResponse(content={"message": f"已删除凭证文件 {os.path.basename(filename)}"})
+            except OSError as e:
+                raise HTTPException(status_code=500, detail=f"删除文件失败: {str(e)}")
+        
+        else:
+            raise HTTPException(status_code=400, detail="无效的操作类型")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"凭证文件操作失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/creds/download/{filename}")
+async def download_cred_file(filename: str, token: str = Depends(verify_token)):
+    """下载单个凭证文件"""
+    try:
+        # 构建完整路径
+        from .config import CREDENTIALS_DIR
+        filepath = os.path.join(CREDENTIALS_DIR, filename)
+        
+        # 验证文件路径安全性
+        if not filepath.endswith('.json') or not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        # 读取文件内容
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        from fastapi.responses import Response
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"下载凭证文件失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/creds/download-all")
+async def download_all_creds(token: str = Depends(verify_token)):
+    """打包下载所有凭证文件"""
+    try:
+        import zipfile
+        import io
+        from .config import CREDENTIALS_DIR
+        
+        # 创建内存中的ZIP文件
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # 遍历所有JSON文件
+            for filename in os.listdir(CREDENTIALS_DIR):
+                if filename.endswith('.json'):
+                    filepath = os.path.join(CREDENTIALS_DIR, filename)
+                    if os.path.isfile(filepath):
+                        zip_file.write(filepath, filename)
+        
+        zip_buffer.seek(0)
+        
+        from fastapi.responses import Response
+        return Response(
+            content=zip_buffer.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=credentials.zip"}
+        )
+        
+    except Exception as e:
+        logging.error(f"打包下载失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

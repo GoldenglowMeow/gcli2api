@@ -219,6 +219,138 @@
             background-color: #28a745;
             transition: width 0.3s ease;
         }
+        
+        /* 文件管理样式 */
+        .cred-card {
+            background-color: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            position: relative;
+        }
+        .cred-card.disabled {
+            background-color: #f5f5f5;
+            border-color: #ccc;
+            opacity: 0.7;
+        }
+        .cred-card.cd {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+        }
+        .cred-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .cred-filename {
+            font-family: monospace;
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+        .cred-status {
+            display: flex;
+            gap: 5px;
+        }
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: white;
+        }
+        .status-badge.enabled {
+            background-color: #28a745;
+        }
+        .status-badge.disabled {
+            background-color: #6c757d;
+        }
+        .status-badge.cd {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .error-codes {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .cred-actions {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .cred-btn {
+            padding: 4px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .cred-btn.enable {
+            background-color: #28a745;
+            color: white;
+        }
+        .cred-btn.disable {
+            background-color: #6c757d;
+            color: white;
+        }
+        .cred-btn.delete {
+            background-color: #dc3545;
+            color: white;
+        }
+        .cred-btn.download {
+            background-color: #007bff;
+            color: white;
+        }
+        .cred-btn.view {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .cred-details {
+            margin-top: 10px;
+            display: none;
+        }
+        .cred-details.show {
+            display: block;
+        }
+        .cred-content {
+            background-color: #f0f8ff;
+            border: 1px solid #b0d4ff;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 11px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .manage-actions {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .refresh-btn {
+            background-color: #17a2b8;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .download-all-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -240,6 +372,7 @@
             <div class="tabs">
                 <button class="tab active" onclick="switchTab('oauth')">OAuth认证</button>
                 <button class="tab" onclick="switchTab('upload')">批量上传</button>
+                <button class="tab" onclick="switchTab('manage')">文件管理</button>
             </div>
 
             <!-- OAuth认证标签页 -->
@@ -323,6 +456,22 @@
                 </div>
             </div>
 
+            <!-- 文件管理标签页 -->
+            <div id="manageTab" class="tab-content">
+                <h3>凭证文件管理</h3>
+                <p>管理所有认证文件，查看状态和执行操作</p>
+                
+                <div class="manage-actions">
+                    <button class="refresh-btn" onclick="refreshCredsStatus()">刷新状态</button>
+                    <button class="download-all-btn" onclick="downloadAllCreds()">打包下载所有文件</button>
+                </div>
+                
+                <div id="credsListSection">
+                    <div class="loading" id="credsLoading">正在加载凭证文件...</div>
+                    <div id="credsList"></div>
+                </div>
+            </div>
+
             <div id="statusSection"></div>
         </div>
     </div>
@@ -332,21 +481,32 @@
         let authInProgress = false;
         let selectedFiles = [];
         let authToken = '';
+        let credsData = {};
 
         function showStatus(message, type = 'info') {
+            console.log('showStatus called:', message, type);
             const statusSection = document.getElementById('statusSection');
-            statusSection.innerHTML = `<div class="status ${type}">${message}</div>`;
+            if (statusSection) {
+                statusSection.innerHTML = `<div class="status ${type}">${message}</div>`;
+            } else {
+                console.error('statusSection not found');
+                alert(message); // 临时回退方案
+            }
         }
 
         // 登录相关函数
         async function login() {
+            console.log('Login function called');
             const password = document.getElementById('password').value;
+            console.log('Password length:', password ? password.length : 0);
+            
             if (!password) {
                 showStatus('请输入密码', 'error');
                 return;
             }
 
             try {
+                console.log('Sending login request...');
                 const response = await fetch('/auth/login', {
                     method: 'POST',
                     headers: {
@@ -355,17 +515,22 @@
                     body: JSON.stringify({ password: password })
                 });
 
+                console.log('Login response status:', response.status);
                 const data = await response.json();
+                console.log('Login response data:', data);
                 
                 if (response.ok) {
                     authToken = data.token;
+                    console.log('Login successful, token received');
                     document.getElementById('loginSection').classList.add('hidden');
                     document.getElementById('mainSection').classList.remove('hidden');
                     showStatus('登录成功', 'success');
                 } else {
-                    showStatus(`登录失败: ${data.error}`, 'error');
+                    console.log('Login failed:', data);
+                    showStatus(`登录失败: ${data.detail || data.error || '未知错误'}`, 'error');
                 }
             } catch (error) {
+                console.error('Login error:', error);
                 showStatus(`网络错误: ${error.message}`, 'error');
             }
         }
@@ -385,6 +550,11 @@
             // 激活选中标签
             event.target.classList.add('active');
             document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            // 如果切换到文件管理页面，自动加载数据
+            if (tabName === 'manage') {
+                refreshCredsStatus();
+            }
         }
 
         // 获取认证头
@@ -609,8 +779,271 @@
             addFiles(files);
         });
 
+        // 凭证文件管理相关函数
+        async function refreshCredsStatus() {
+            const credsLoading = document.getElementById('credsLoading');
+            const credsList = document.getElementById('credsList');
+            
+            try {
+                credsLoading.style.display = 'block';
+                credsList.innerHTML = '';
+                
+                console.log('Fetching creds status...');
+                
+                const response = await fetch('/creds/status', {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                console.log('Creds status response:', response.status);
+                
+                const data = await response.json();
+                console.log('Creds status data:', data);
+                
+                if (response.ok) {
+                    credsData = data.creds;
+                    
+                    // 调试：检查特定文件的状态
+                    for (const [fullPath, credInfo] of Object.entries(credsData)) {
+                        if (credInfo.filename.includes('atomic-affinity')) {
+                            console.log(`File ${credInfo.filename} status:`, credInfo.status);
+                        }
+                    }
+                    
+                    renderCredsList();
+                    showStatus(`已加载 ${Object.keys(credsData).length} 个凭证文件`, 'success');
+                } else {
+                    showStatus(`加载失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('refreshCredsStatus error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            } finally {
+                credsLoading.style.display = 'none';
+            }
+        }
+
+        function renderCredsList() {
+            const credsList = document.getElementById('credsList');
+            credsList.innerHTML = '';
+            
+            if (Object.keys(credsData).length === 0) {
+                credsList.innerHTML = '<p style="text-align: center; color: #666;">暂无凭证文件</p>';
+                return;
+            }
+            
+            for (const [fullPath, credInfo] of Object.entries(credsData)) {
+                const card = createCredCard(fullPath, credInfo);
+                credsList.appendChild(card);
+            }
+        }
+
+        function createCredCard(fullPath, credInfo) {
+            const div = document.createElement('div');
+            const status = credInfo.status;
+            const filename = credInfo.filename;
+            
+            // 调试：记录状态
+            if (filename.includes('atomic-affinity')) {
+                console.log(`Creating card for ${filename}:`, status);
+            }
+            
+            // 设置卡片状态样式
+            let cardClass = 'cred-card';
+            if (status.disabled) cardClass += ' disabled';
+            if (status.in_cd) cardClass += ' cd';
+            
+            div.className = cardClass;
+            
+            // 创建状态标签
+            let statusBadges = '';
+            if (status.disabled) {
+                statusBadges += '<span class="status-badge disabled">已禁用</span>';
+            } else {
+                statusBadges += '<span class="status-badge enabled">已启用</span>';
+            }
+            
+            if (status.in_cd) {
+                statusBadges += '<span class="status-badge cd">CD中</span>';
+            }
+            
+            if (status.error_codes && status.error_codes.length > 0) {
+                statusBadges += `<span class="error-codes">${status.error_codes.join(', ')}</span>`;
+            }
+            
+            // 为HTML ID生成安全的标识符
+            const pathId = btoa(encodeURIComponent(fullPath)).replace(/[+/=]/g, '_');
+            
+            // 创建操作按钮 - 使用文件名而不是完整路径
+            let actionButtons = '';
+            if (status.disabled) {
+                actionButtons += `<button class="cred-btn enable" data-filename="${filename}" data-action="enable">启用</button>`;
+            } else {
+                actionButtons += `<button class="cred-btn disable" data-filename="${filename}" data-action="disable">禁用</button>`;
+            }
+            
+            actionButtons += `
+                <button class="cred-btn view" onclick="toggleCredDetails('${pathId}')">查看内容</button>
+                <button class="cred-btn download" onclick="downloadCred('${filename}')">下载</button>
+                <button class="cred-btn delete" data-filename="${filename}" data-action="delete">删除</button>
+            `;
+            
+            div.innerHTML = `
+                <div class="cred-header">
+                    <div class="cred-filename">${filename}</div>
+                    <div class="cred-status">${statusBadges}</div>
+                </div>
+                <div class="cred-actions">${actionButtons}</div>
+                <div class="cred-details" id="details-${pathId}">
+                    <div class="cred-content"></div>
+                </div>
+            `;
+            
+            // 设置文件内容（避免HTML注入）
+            const contentDiv = div.querySelector('.cred-content');
+            if (credInfo.content) {
+                contentDiv.textContent = JSON.stringify(credInfo.content, null, 2);
+            } else {
+                contentDiv.textContent = credInfo.error || '无法读取文件内容';
+            }
+            
+            // 添加事件监听器到按钮
+            const actionButtonElements = div.querySelectorAll('[data-filename][data-action]');
+            actionButtonElements.forEach(button => {
+                button.addEventListener('click', function() {
+                    const filename = this.getAttribute('data-filename');
+                    const action = this.getAttribute('data-action');
+                    
+                    if (action === 'delete') {
+                        deleteCred(filename);
+                    } else {
+                        credAction(filename, action);
+                    }
+                });
+            });
+            
+            return div;
+        }
+
+        async function credAction(filename, action) {
+            try {
+                console.log('Performing action:', action, 'on file:', filename);
+                console.log('Filename type:', typeof filename);
+                console.log('Filename length:', filename.length);
+                console.log('Ends with .json:', filename.endsWith('.json'));
+                
+                const requestBody = {
+                    filename: filename,
+                    action: action
+                };
+                
+                console.log('Request body:', requestBody);
+                
+                const response = await fetch('/creds/action', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify(requestBody)
+                });
+                
+                console.log('Response status:', response.status);
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (response.ok) {
+                    showStatus(data.message, 'success');
+                    await refreshCredsStatus(); // 刷新状态
+                } else {
+                    showStatus(`操作失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('credAction error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        function toggleCredDetails(pathId) {
+            const detailsId = 'details-' + pathId;
+            const details = document.getElementById(detailsId);
+            if (details) {
+                details.classList.toggle('show');
+            }
+        }
+
+        async function downloadCred(filename) {
+            try {
+                const response = await fetch(`/creds/download/${filename}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    showStatus(`已下载文件: ${filename}`, 'success');
+                } else {
+                    const data = await response.json();
+                    showStatus(`下载失败: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`下载失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function downloadAllCreds() {
+            try {
+                const response = await fetch('/creds/download-all', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'credentials.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    showStatus('已下载所有凭证文件', 'success');
+                } else {
+                    const data = await response.json();
+                    showStatus(`打包下载失败: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`打包下载失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteCred(filename) {
+            if (!confirm(`确定要删除凭证文件吗？\n${filename}`)) {
+                return;
+            }
+            
+            await credAction(filename, 'delete');
+        }
+
         // 页面加载时检查状态
         window.onload = function() {
+            console.log('Page loaded');
+            console.log('Login section exists:', !!document.getElementById('loginSection'));
+            console.log('Main section exists:', !!document.getElementById('mainSection'));
+            console.log('Status section exists:', !!document.getElementById('statusSection'));
             showStatus('请输入密码登录', 'info');
         };
     </script>

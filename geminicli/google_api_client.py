@@ -34,10 +34,12 @@ def _create_error_response(message: str, status_code: int = 500) -> Response:
         media_type="application/json"
     )
 
-async def _handle_quota_exhausted(credential_manager: CredentialManager, status_code: int):
+async def _handle_quota_exhausted(credential_manager: CredentialManager, status_code: int, current_file: str = None):
     """Handle quota exhausted error by rotating credentials."""
     if status_code == 429 and credential_manager:
         log.warning("Google API returned status 429 - quota exhausted, switching credentials")
+        if current_file:
+            await credential_manager.record_error(current_file, status_code)
         await credential_manager.rotate_to_next_credential()
 
 async def _prepare_request_headers_and_payload(payload: dict, creds, credential_manager: CredentialManager):
@@ -125,8 +127,11 @@ async def _handle_streaming_response(resp: httpx.Response, credential_manager: C
     if resp.status_code != 200:
         log.error(f"Google API returned status {resp.status_code}")
         
-        # 检查是否是 429 错误（配额用完），立即切换凭据
-        await _handle_quota_exhausted(credential_manager, resp.status_code)
+        # 记录错误并检查是否是 429 错误（配额用完），立即切换凭据
+        current_file = credential_manager.get_current_file_path() if credential_manager else None
+        if current_file and credential_manager:
+            await credential_manager.record_error(current_file, resp.status_code)
+        await _handle_quota_exhausted(credential_manager, resp.status_code, current_file)
         
         # 返回错误流
         async def error_generator():
@@ -146,10 +151,19 @@ async def _handle_streaming_response(resp: httpx.Response, credential_manager: C
         )
     
     async def stream_generator():
+        success_recorded = False
         try:
             async for chunk in resp.aiter_lines():
                 if not chunk or not chunk.startswith('data: '):
                     continue
+                    
+                # 记录第一次成功响应
+                if not success_recorded:
+                    current_file = credential_manager.get_current_file_path() if credential_manager else None
+                    if current_file and credential_manager:
+                        await credential_manager.record_success(current_file)
+                    success_recorded = True
+                
                 payload = chunk[len('data: '):]
                 try:
                     obj = json.loads(payload)
@@ -176,6 +190,11 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
     """Handle non-streaming response from Google API."""
     if resp.status_code == 200:
         try:
+            # 记录成功响应
+            current_file = credential_manager.get_current_file_path() if credential_manager else None
+            if current_file and credential_manager:
+                await credential_manager.record_success(current_file)
+            
             raw = await resp.aread()
             google_api_response = raw.decode('utf-8')
             if google_api_response.startswith('data: '):
@@ -197,8 +216,11 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
     else:
         log.error(f"Google API returned status {resp.status_code}")
         
-        # 检查是否是 429 错误（配额用完），立即切换凭据
-        await _handle_quota_exhausted(credential_manager, resp.status_code)
+        # 记录错误并检查是否是 429 错误（配额用完），立即切换凭据
+        current_file = credential_manager.get_current_file_path() if credential_manager else None
+        if current_file and credential_manager:
+            await credential_manager.record_error(current_file, resp.status_code)
+        await _handle_quota_exhausted(credential_manager, resp.status_code, current_file)
         
         return _create_error_response(f"API error: {resp.status_code}", resp.status_code)
 

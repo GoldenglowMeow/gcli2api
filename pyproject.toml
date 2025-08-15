@@ -9,11 +9,10 @@ dependencies = [
     "fastapi>=0.116.1",
     "google-auth>=2.40.3",
     "google-auth-oauthlib>=1.2.2",
-    "google-cloud-aiplatform>=1.109.0",
-    "google-genai>=1.30.0",
     "httpx[http2]>=0.28.1",
     "hypercorn>=0.17.3",
     "pydantic>=2.11.7",
     "python-dotenv>=1.1.1",
     "python-multipart>=0.0.20",
+    "toml>=0.10.2",
 ]
