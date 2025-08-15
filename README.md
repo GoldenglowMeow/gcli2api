@@ -51,8 +51,8 @@ bash start.sh
 ### Windows 环境
 
 **初始安装**
-```bash
-curl -o install-termux.sh "https://raw.githubusercontent.com/su-kaka/gcli2api/refs/heads/master/install-termux.sh" && chmod +x install-termux.sh && ./install-termux.sh
+```powershell
+iex (iwr "https://raw.githubusercontent.com/su-kaka/gcli2api/refs/heads/master/install.ps1" -UseBasicParsing).Content
 ```
 
 **重启服务**
