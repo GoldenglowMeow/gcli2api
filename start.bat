@@ -1,5 +1,5 @@
 git pull
 uv sync
 call .venv\Scripts\activate.bat
-python web.py
+python3 web.py
 pause
