@@ -55,6 +55,19 @@ bash start.sh
 iex (iwr "https://raw.githubusercontent.com/su-kaka/gcli2api/refs/heads/master/install.ps1" -UseBasicParsing).Content
 ```
 
+### Linux 环境
+
+**初始安装**
+```bash
+curl -o install.sh "https://raw.githubusercontent.com/su-kaka/gcli2api/refs/heads/master/install-termux.sh" && chmod +x install-termux.sh && ./install.sh
+```
+
+**重启服务**
+```bash
+cd gcli2api
+bash start.sh
+```
+
 **重启服务**
 双击执行 `start.bat`
 
