@@ -114,7 +114,7 @@ docker run -d --name gcli2api --network host -e PASSWORD=pwd -v $(pwd)/data/cred
 ## ⚠️ 注意事项
 
 - 当前 OAuth 验证流程**仅支持本地主机（localhost）访问**，即须通过 `http://127.0.0.1:7861/auth` 完成认证。
-- **如需在云服务器或其他远程环境部署，请先在本地运行服务并完成 OAuth 验证，获得生成的 json 凭证文件（位于 `./data/creds` 目录）后，再在面板或云端环境将该文件上传至对应的 creds 文件夹即可。**
+- **如需在云服务器或其他远程环境部署，请先在本地运行服务并完成 OAuth 验证，获得生成的 json 凭证文件（位于 `./geminicli/creds` 目录）后，再在auth面板将该文件上传即可。**
 
 ---
 
