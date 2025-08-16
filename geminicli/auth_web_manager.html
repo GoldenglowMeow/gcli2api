@@ -335,6 +335,99 @@
             gap: 10px;
             flex-wrap: wrap;
         }
+        
+        /* 文件管理新增样式 */
+        .stats-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 12px 20px;
+            text-align: center;
+            min-width: 120px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            display: block;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+        .stat-item.total { border-left: 4px solid #007bff; }
+        .stat-item.normal { border-left: 4px solid #28a745; }
+        .stat-item.cd { border-left: 4px solid #ffc107; }
+        .stat-item.disabled { border-left: 4px solid #6c757d; }
+        
+        .filter-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filter-select {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: white;
+        }
+        .filter-select:focus {
+            border-color: #4285f4;
+            outline: none;
+        }
+        
+        .pagination-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .pagination-info {
+            color: #666;
+            font-size: 14px;
+        }
+        .pagination-btn {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: #f8f9fa;
+            border-color: #4285f4;
+        }
+        .pagination-btn:disabled {
+            background: #f5f5f5;
+            color: #ccc;
+            cursor: not-allowed;
+        }
+        .pagination-btn.active {
+            background: #4285f4;
+            color: white;
+            border-color: #4285f4;
+        }
+        .page-size-select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
         .refresh-btn {
             background-color: #17a2b8;
             color: white;
@@ -523,14 +616,59 @@
                 <h3>凭证文件管理</h3>
                 <p>管理所有认证文件，查看状态和执行操作</p>
                 
+                <!-- 状态统计 -->
+                <div class="stats-container" id="statsContainer">
+                    <div class="stat-item total">
+                        <span class="stat-number" id="statTotal">0</span>
+                        <span class="stat-label">总计</span>
+                    </div>
+                    <div class="stat-item normal">
+                        <span class="stat-number" id="statNormal">0</span>
+                        <span class="stat-label">正常</span>
+                    </div>
+                    <div class="stat-item cd">
+                        <span class="stat-number" id="statCd">0</span>
+                        <span class="stat-label">CD中</span>
+                    </div>
+                    <div class="stat-item disabled">
+                        <span class="stat-number" id="statDisabled">0</span>
+                        <span class="stat-label">禁用</span>
+                    </div>
+                </div>
+                
                 <div class="manage-actions">
                     <button class="refresh-btn" onclick="refreshCredsStatus()">刷新状态</button>
                     <button class="download-all-btn" onclick="downloadAllCreds()">打包下载所有文件</button>
                 </div>
                 
+                <!-- 筛选和分页控件 -->
+                <div class="filter-container">
+                    <label for="statusFilter">状态筛选：</label>
+                    <select id="statusFilter" class="filter-select" onchange="applyFilters()">
+                        <option value="all">全部</option>
+                        <option value="normal">正常</option>
+                        <option value="cd">CD中</option>
+                        <option value="disabled">禁用</option>
+                    </select>
+                    
+                    <label for="pageSizeSelect">每页显示：</label>
+                    <select id="pageSizeSelect" class="page-size-select" onchange="changePageSize()">
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                
                 <div id="credsListSection">
                     <div class="loading" id="credsLoading">正在加载凭证文件...</div>
                     <div id="credsList"></div>
+                    
+                    <!-- 分页控件 -->
+                    <div class="pagination-container" id="paginationContainer" style="display: none;">
+                        <button class="pagination-btn" id="prevPageBtn" onclick="changePage(-1)">上一页</button>
+                        <div class="pagination-info" id="paginationInfo">第 1 页，共 1 页</div>
+                        <button class="pagination-btn" id="nextPageBtn" onclick="changePage(1)">下一页</button>
+                    </div>
                 </div>
             </div>
 
@@ -622,6 +760,18 @@
         let selectedFiles = [];
         let authToken = '';
         let credsData = {};
+        
+        // 分页和筛选相关变量
+        let filteredCredsData = {};
+        let currentPage = 1;
+        let pageSize = 20;
+        let currentFilter = 'all';
+        let statsData = {
+            total: 0,
+            normal: 0,
+            cd: 0,
+            disabled: 0
+        };
 
         function showStatus(message, type = 'info') {
             console.log('showStatus called:', message, type);
@@ -947,14 +1097,16 @@
                 if (response.ok) {
                     credsData = data.creds;
                     
-                    // 调试：检查特定文件的状态
-                    for (const [fullPath, credInfo] of Object.entries(credsData)) {
-                        if (credInfo.filename.includes('atomic-affinity')) {
-                            console.log(`File ${credInfo.filename} status:`, credInfo.status);
-                        }
-                    }
+                    // 计算统计数据
+                    calculateStats();
                     
-                    renderCredsList();
+                    // 更新统计显示
+                    updateStatsDisplay();
+                    
+                    // 应用筛选并显示第一页
+                    currentPage = 1;
+                    applyFilters();
+                    
                     showStatus(`已加载 ${Object.keys(credsData).length} 个凭证文件`, 'success');
                 } else {
                     showStatus(`加载失败: ${data.detail || data.error || '未知错误'}`, 'error');
@@ -967,19 +1119,138 @@
             }
         }
 
+        // 计算统计数据
+        function calculateStats() {
+            statsData = {
+                total: 0,
+                normal: 0,
+                cd: 0,
+                disabled: 0
+            };
+            
+            for (const [fullPath, credInfo] of Object.entries(credsData)) {
+                statsData.total++;
+                
+                if (credInfo.status.disabled) {
+                    statsData.disabled++;
+                } else if (credInfo.status.in_cd) {
+                    statsData.cd++;
+                } else {
+                    statsData.normal++;
+                }
+            }
+        }
+        
+        // 更新统计显示
+        function updateStatsDisplay() {
+            document.getElementById('statTotal').textContent = statsData.total;
+            document.getElementById('statNormal').textContent = statsData.normal;
+            document.getElementById('statCd').textContent = statsData.cd;
+            document.getElementById('statDisabled').textContent = statsData.disabled;
+        }
+        
+        // 应用筛选
+        function applyFilters() {
+            const statusFilter = document.getElementById('statusFilter').value;
+            currentFilter = statusFilter;
+            filteredCredsData = {};
+            
+            for (const [fullPath, credInfo] of Object.entries(credsData)) {
+                let shouldInclude = false;
+                
+                switch (statusFilter) {
+                    case 'all':
+                        shouldInclude = true;
+                        break;
+                    case 'normal':
+                        shouldInclude = !credInfo.status.disabled && !credInfo.status.in_cd;
+                        break;
+                    case 'cd':
+                        shouldInclude = credInfo.status.in_cd;
+                        break;
+                    case 'disabled':
+                        shouldInclude = credInfo.status.disabled;
+                        break;
+                }
+                
+                if (shouldInclude) {
+                    filteredCredsData[fullPath] = credInfo;
+                }
+            }
+            
+            currentPage = 1;
+            renderCredsList();
+            updatePagination();
+        }
+        
+        // 获取当前页数据
+        function getCurrentPageData() {
+            const filteredEntries = Object.entries(filteredCredsData);
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            return filteredEntries.slice(startIndex, endIndex);
+        }
+        
+        // 获取总页数
+        function getTotalPages() {
+            return Math.ceil(Object.keys(filteredCredsData).length / pageSize);
+        }
+        
+        // 渲染凭证列表
         function renderCredsList() {
             const credsList = document.getElementById('credsList');
             credsList.innerHTML = '';
             
-            if (Object.keys(credsData).length === 0) {
-                credsList.innerHTML = '<p style="text-align: center; color: #666;">暂无凭证文件</p>';
+            const currentPageData = getCurrentPageData();
+            
+            if (currentPageData.length === 0) {
+                const message = Object.keys(credsData).length === 0 ? 
+                    '暂无凭证文件' : '当前筛选条件下暂无数据';
+                credsList.innerHTML = `<p style="text-align: center; color: #666;">${message}</p>`;
+                document.getElementById('paginationContainer').style.display = 'none';
                 return;
             }
             
-            for (const [fullPath, credInfo] of Object.entries(credsData)) {
+            for (const [fullPath, credInfo] of currentPageData) {
                 const card = createCredCard(fullPath, credInfo);
                 credsList.appendChild(card);
             }
+            
+            document.getElementById('paginationContainer').style.display = getTotalPages() > 1 ? 'flex' : 'none';
+        }
+        
+        // 更新分页信息
+        function updatePagination() {
+            const totalPages = getTotalPages();
+            const totalItems = Object.keys(filteredCredsData).length;
+            const startItem = (currentPage - 1) * pageSize + 1;
+            const endItem = Math.min(currentPage * pageSize, totalItems);
+            
+            document.getElementById('paginationInfo').textContent = 
+                `第 ${currentPage} 页，共 ${totalPages} 页 (显示 ${startItem}-${endItem}，共 ${totalItems} 项)`;
+            
+            document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+            document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+        }
+        
+        // 切换页面
+        function changePage(direction) {
+            const totalPages = getTotalPages();
+            const newPage = currentPage + direction;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                renderCredsList();
+                updatePagination();
+            }
+        }
+        
+        // 改变每页显示数量
+        function changePageSize() {
+            pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+            currentPage = 1;
+            renderCredsList();
+            updatePagination();
         }
 
         function createCredCard(fullPath, credInfo) {
