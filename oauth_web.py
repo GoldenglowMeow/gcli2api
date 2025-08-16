@@ -22,6 +22,7 @@ try:
         generate_auth_token, 
         verify_auth_token,
         asyncio_complete_auth_flow,
+        auto_detect_project_id,
         start_oauth_server,
         stop_oauth_server,
         CALLBACK_URL,
@@ -46,10 +47,10 @@ class LoginRequest(BaseModel):
     password: str
 
 class AuthStartRequest(BaseModel):
-    project_id: str
+    project_id: str = None  # 现在是可选的，支持自动检测
 
 class AuthCallbackRequest(BaseModel):
-    project_id: str
+    project_id: str = None  # 现在是可选的，支持自动检测
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """验证认证令牌"""
@@ -93,20 +94,30 @@ async def login(request: LoginRequest):
 
 @app.post("/auth/start")
 async def start_auth(request: AuthStartRequest, token: str = Depends(verify_token)):
-    """开始认证流程"""
+    """开始认证流程，支持自动检测项目ID"""
     try:
-        if not request.project_id:
-            raise HTTPException(status_code=400, detail="Project ID 不能为空")
+        # 如果没有提供项目ID，尝试自动检测
+        project_id = request.project_id
+        if not project_id:
+            log.info("未提供项目ID，尝试自动检测...")
+            try:
+                project_id = await auto_detect_project_id()
+                if project_id:
+                    log.info(f"自动检测到项目ID: {project_id}")
+            except Exception as e:
+                log.debug(f"自动检测项目ID失败: {e}")
         
         # 使用认证令牌作为用户会话标识
         user_session = token if token else None
-        result = create_auth_url(request.project_id, user_session)
+        result = create_auth_url(project_id, user_session)
         
         if result['success']:
             return JSONResponse(content={
                 "auth_url": result['auth_url'],
                 "state": result['state'],
-                "callback_url": CALLBACK_URL
+                "callback_url": CALLBACK_URL,
+                "auto_project_detection": result.get('auto_project_detection', False),
+                "detected_project_id": result.get('detected_project_id')
             })
         else:
             raise HTTPException(status_code=500, detail=result['error'])
@@ -120,24 +131,46 @@ async def start_auth(request: AuthStartRequest, token: str = Depends(verify_toke
 
 @app.post("/auth/callback")
 async def auth_callback(request: AuthCallbackRequest, token: str = Depends(verify_token)):
-    """处理认证回调（异步等待）"""
+    """处理认证回调（异步等待），支持自动检测项目ID"""
     try:
-        if not request.project_id:
-            raise HTTPException(status_code=400, detail="Project ID 不能为空")
+        # 项目ID现在是可选的，在回调处理中进行自动检测
+        project_id = request.project_id
         
         # 使用认证令牌作为用户会话标识
         user_session = token if token else None
         # 异步等待OAuth回调完成
-        result = await asyncio_complete_auth_flow(request.project_id, user_session)
+        result = await asyncio_complete_auth_flow(project_id, user_session)
         
         if result['success']:
             return JSONResponse(content={
                 "credentials": result['credentials'],
                 "file_path": result['file_path'],
-                "message": "认证成功，凭证已保存"
+                "message": "认证成功，凭证已保存",
+                "auto_detected_project": result.get('auto_detected_project', False)
             })
         else:
-            raise HTTPException(status_code=400, detail=result['error'])
+            # 如果需要手动项目ID或项目选择，在响应中标明
+            if result.get('requires_manual_project_id'):
+                # 使用JSON响应而不是HTTPException来传递复杂数据
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": result['error'],
+                        "requires_manual_project_id": True
+                    }
+                )
+            elif result.get('requires_project_selection'):
+                # 返回项目列表供用户选择
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": result['error'],
+                        "requires_project_selection": True,
+                        "available_projects": result['available_projects']
+                    }
+                )
+            else:
+                raise HTTPException(status_code=400, detail=result['error'])
             
     except HTTPException:
         raise

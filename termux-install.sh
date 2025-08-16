@@ -1,5 +1,5 @@
 pkg update && pkg upgrade -y
-pkg install rust build-essential python git ninja clang cmake uv nodejs binutils-is-llvm binutils -y
+pkg install rust build-essential python git ninja clang cmake uv nodejs binutils -y
 npm install pm2 -g
 if [ -f "./web.py" ]; then
     # Already in target directory; skip clone and cd
@@ -13,4 +13,4 @@ fi
 git pull
 uv sync
 source .venv/bin/activate
-pm2 start python3 web.py
+pm2 start .venv/bin/python --name web -- web.py

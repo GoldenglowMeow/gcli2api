@@ -278,26 +278,23 @@
         <div id="mainSection" class="hidden">
             <h1>Google OAuth 认证</h1>
             
-            <!-- API 启用警告 -->
-            <div class="api-warning">
-                <h4>⚠️ 重要：请先启用以下 API 服务</h4>
-                <p style="margin: 15px 0;">在开始认证前，请确保为您的项目启用以下API：</p>
-                <ol style="margin: 15px 0; padding-left: 20px;">
-                    <li style="margin-bottom: 10px;">
-                        <strong>Gemini Cloud Assist API</strong><br>
-                        <a href="https://console.cloud.google.com/apis/api/geminicloudassist.googleapis.com" target="_blank">点击这里启用 →</a>
-                    </li>
-                    <li>
-                        <strong>Gemini for Google Cloud API</strong><br>
-                        <a href="https://console.cloud.google.com/apis/api/cloudaicompanion.googleapis.com" target="_blank">点击这里启用 →</a>
-                    </li>
-                </ol>
-                <p style="margin: 15px 0; color: #d73502;"><strong>注意：</strong>如果未启用这些API，OAuth认证过程将会失败。</p>
+            <!-- API 自动启用说明 -->
+            <div class="status info">
+                <h4>✨ 自动化优化</h4>
+                <p style="margin: 15px 0;">系统现在会在认证成功后自动为您的项目启用以下必需的API服务：</p>
+                <ul style="margin: 15px 0; padding-left: 20px;">
+                    <li><strong>Gemini Cloud Assist API</strong></li>
+                    <li><strong>Gemini for Google Cloud API</strong></li>
+                </ul>
+                <p style="margin: 15px 0; color: #0c5460;"><strong>说明：</strong>无需手动启用API，系统会自动处理这些配置步骤。</p>
             </div>
 
             <div class="form-group">
-                <label for="projectId">Google Cloud Project ID:</label>
-                <input type="text" id="projectId" placeholder="输入你的 Google Cloud Project ID" />
+                <label for="projectId">Google Cloud Project ID (可选):</label>
+                <input type="text" id="projectId" placeholder="留空将尝试自动检测，或手动输入项目ID" />
+                <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                    💡 提示：如果你不懂这是什么，可以留空此字段让系统自动检测项目ID
+                </small>
             </div>
             
             <button class="btn" id="getAuthBtn" onclick="startAuth()">获取认证链接</button>
@@ -410,21 +407,26 @@
 
         async function startAuth() {
             const projectId = document.getElementById('projectId').value.trim();
-            if (!projectId) {
-                showStatus('请输入 Project ID', 'error');
-                return;
-            }
-
-            currentProjectId = projectId;
+            // 项目ID现在是可选的
+            currentProjectId = projectId || null;
+            
             const btn = document.getElementById('getAuthBtn');
             btn.disabled = true;
             btn.textContent = '正在生成认证链接...';
 
             try {
+                const requestBody = {};
+                if (projectId) {
+                    requestBody.project_id = projectId;
+                    showStatus('使用指定的项目ID生成认证链接...', 'info');
+                } else {
+                    showStatus('将尝试自动检测项目ID，正在生成认证链接...', 'info');
+                }
+
                 const response = await fetch('/auth/start', {
                     method: 'POST',
                     headers: getAuthHeaders(),
-                    body: JSON.stringify({ project_id: projectId })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
@@ -433,7 +435,12 @@
                     document.getElementById('authUrl').href = data.auth_url;
                     document.getElementById('authUrl').textContent = data.auth_url;
                     document.getElementById('authUrlSection').classList.remove('hidden');
-                    showStatus('认证链接已生成，请点击链接完成 OAuth 授权', 'info');
+                    
+                    if (data.auto_project_detection) {
+                        showStatus('认证链接已生成（将在认证完成后自动检测项目ID），请点击链接完成 OAuth 授权', 'info');
+                    } else {
+                        showStatus(`认证链接已生成（项目ID: ${data.detected_project_id}），请点击链接完成 OAuth 授权`, 'info');
+                    }
                     authInProgress = true;
                 } else {
                     showStatus(`生成认证链接失败: ${data.error || '未知错误'}`, 'error');
@@ -459,10 +466,15 @@
             try {
                 showStatus('正在等待 OAuth 回调，请确保已完成浏览器中的授权...', 'info');
                 
+                const requestBody = {};
+                if (currentProjectId) {
+                    requestBody.project_id = currentProjectId;
+                }
+                
                 const response = await fetch('/auth/callback', {
                     method: 'POST',
                     headers: getAuthHeaders(),
-                    body: JSON.stringify({ project_id: currentProjectId })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
@@ -471,15 +483,58 @@
                     currentCredentials = data.credentials;
                     document.getElementById('credentialsContent').textContent = JSON.stringify(data.credentials, null, 2);
                     document.getElementById('credentialsSection').classList.remove('hidden');
-                    showStatus(`认证成功！文件已保存到服务器: ${data.file_path}`, 'success');
+                    
+                    if (data.auto_detected_project) {
+                        showStatus(`认证成功！项目ID已自动检测为: ${data.credentials.project_id}，文件已保存到服务器: ${data.file_path}`, 'success');
+                    } else {
+                        showStatus(`认证成功！文件已保存到服务器: ${data.file_path}`, 'success');
+                    }
+                    
                     authInProgress = false;
                     
                     // 隐藏前面的步骤，突出显示成功结果
                     document.getElementById('authUrlSection').style.opacity = '0.6';
                 } else {
-                    showStatus(`认证失败: ${data.error || '获取认证文件失败'}`, 'error');
-                    if (data.error && data.error.includes('未接收到授权回调')) {
-                        showStatus('提示：请确保已完成浏览器中的 OAuth 认证，并看到了"OAuth authentication successful"页面', 'warning');
+                    // 检查是否需要项目选择
+                    if (data.requires_project_selection && data.available_projects) {
+                        let projectOptions = "请选择一个项目：\n\n";
+                        data.available_projects.forEach((project, index) => {
+                            projectOptions += `${index + 1}. ${project.name} (${project.projectId})\n`;
+                        });
+                        projectOptions += `\n请输入序号 (1-${data.available_projects.length}):`;
+                        
+                        const selection = prompt(projectOptions);
+                        const projectIndex = parseInt(selection) - 1;
+                        
+                        if (projectIndex >= 0 && projectIndex < data.available_projects.length) {
+                            const selectedProject = data.available_projects[projectIndex];
+                            currentProjectId = selectedProject.projectId;
+                            btn.textContent = '重新尝试获取认证文件';
+                            showStatus(`使用选择的项目 ${selectedProject.name} (${selectedProject.projectId}) 重新尝试...`, 'info');
+                            setTimeout(() => getCredentials(), 1000);
+                            return;
+                        } else {
+                            showStatus('无效的选择，请重新开始认证', 'error');
+                        }
+                    }
+                    // 检查是否需要手动输入项目ID
+                    else if (data.requires_manual_project_id) {
+                        const userProjectId = prompt('无法自动检测项目ID，请手动输入您的Google Cloud项目ID:');
+                        if (userProjectId && userProjectId.trim()) {
+                            // 重新尝试，使用用户输入的项目ID
+                            currentProjectId = userProjectId.trim();
+                            btn.textContent = '重新尝试获取认证文件';
+                            showStatus('使用手动输入的项目ID重新尝试...', 'info');
+                            setTimeout(() => getCredentials(), 1000);
+                            return;
+                        } else {
+                            showStatus('需要项目ID才能完成认证，请重新开始并输入正确的项目ID', 'error');
+                        }
+                    } else {
+                        showStatus(`认证失败: ${data.error || '获取认证文件失败'}`, 'error');
+                        if (data.error && data.error.includes('未接收到授权回调')) {
+                            showStatus('提示：请确保已完成浏览器中的 OAuth 认证，并看到了"OAuth authentication successful"页面', 'warning');
+                        }
                     }
                 }
             } catch (error) {
