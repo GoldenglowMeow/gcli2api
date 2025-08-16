@@ -152,6 +152,10 @@ async def chat_completions(
     # 限制max_tokens
     if getattr(request_data, "max_tokens", None) is not None and request_data.max_tokens > 65535:
         request_data.max_tokens = 65535
+        
+    #限制top_k到64
+    if getattr(request_data, "top_k", None) is not None and request_data.top_k > 64:
+        request_data.top_k = 64
 
     # 过滤空消息，支持文本和图片消息
     filtered_messages = []
