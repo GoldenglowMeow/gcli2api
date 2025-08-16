@@ -412,16 +412,15 @@ async def get_config(token: str = Depends(verify_token)):
         
         current_config["auto_ban_error_codes"] = getattr(config, 'AUTO_BAN_ERROR_CODES', [400, 403])
         
-        # 尝试从TOML文件读取额外配置
+        # 尝试从config.toml文件读取额外配置
         try:
-            state_file = os.path.join(config.CREDENTIALS_DIR, "creds_state.toml")
-            if os.path.exists(state_file):
-                with open(state_file, "r", encoding="utf-8") as f:
+            config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
+            if os.path.exists(config_file):
+                with open(config_file, "r", encoding="utf-8") as f:
                     toml_data = toml.load(f)
                 
                 # 合并TOML配置（不覆盖环境变量）
-                toml_config = toml_data.get("config", {})
-                for key, value in toml_config.items():
+                for key, value in toml_data.items():
                     if key not in env_locked:
                         current_config[key] = value
         except Exception as e:
@@ -466,20 +465,16 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             if not isinstance(new_config["max_connections"], int) or new_config["max_connections"] < 10:
                 raise HTTPException(status_code=400, detail="最大连接数必须是大于等于10的整数")
         
-        # 读取现有的TOML文件
-        state_file = os.path.join(config.CREDENTIALS_DIR, "creds_state.toml")
-        existing_data = {}
+        # 读取现有的配置文件
+        config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
+        existing_config = {}
         
         try:
-            if os.path.exists(state_file):
-                with open(state_file, "r", encoding="utf-8") as f:
-                    existing_data = toml.load(f)
+            if os.path.exists(config_file):
+                with open(config_file, "r", encoding="utf-8") as f:
+                    existing_config = toml.load(f)
         except Exception as e:
-            logging.warning(f"读取现有TOML文件失败: {e}")
-        
-        # 更新配置部分
-        if "config" not in existing_data:
-            existing_data["config"] = {}
+            logging.warning(f"读取现有配置文件失败: {e}")
         
         # 只更新不被环境变量锁定的配置项
         env_locked_keys = set()
@@ -494,25 +489,22 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         
         for key, value in new_config.items():
             if key not in env_locked_keys:
-                existing_data["config"][key] = value
+                existing_config[key] = value
         
-        # 写入TOML文件
-        os.makedirs(os.path.dirname(state_file), exist_ok=True)
-        with open(state_file, "w", encoding="utf-8") as f:
-            toml.dump(existing_data, f)
+        # 使用config模块的保存函数
+        config.save_config_to_toml(existing_config)
         
         # 热更新配置到内存中的模块（如果可能）
         try:
+            # 重新加载配置缓存
+            config.reload_config_cache()
+            
             # 更新credential_manager的配置
-            if "calls_per_rotation" in new_config and not env_locked_keys.intersection({"calls_per_rotation"}):
+            if "calls_per_rotation" in new_config and "calls_per_rotation" not in env_locked_keys:
                 credential_manager._calls_per_rotation = new_config["calls_per_rotation"]
             
             # 重新初始化HTTP客户端以应用新的代理配置（如果代理配置更改了）
             if "proxy" in new_config and "proxy" not in env_locked_keys:
-                # 更新模块级配置
-                import importlib
-                importlib.reload(config)
-                
                 # 重新创建HTTP客户端
                 if credential_manager._http_client:
                     await credential_manager._http_client.aclose()

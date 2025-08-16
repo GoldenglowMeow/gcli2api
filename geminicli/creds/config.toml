@@ -1,0 +1,8 @@
+code_assist_endpoint = "https://cloudcode-pa.googleapis.com"
+credentials_dir = "geminicli/creds"
+proxy = "http://127.0.0.1:10808"
+auto_ban_enabled = true
+auto_ban_error_codes = [ 400, 403,]
+calls_per_rotation = 10
+http_timeout = 30
+max_connections = 100

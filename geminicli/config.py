@@ -79,30 +79,30 @@ _config_cache = {}
 _config_cache_time = 0
 
 def _load_toml_config() -> dict:
-    """Load configuration from TOML file."""
+    """Load configuration from dedicated config.toml file."""
     global _config_cache, _config_cache_time
     
     try:
-        state_file = os.path.join(CREDENTIALS_DIR, "creds_state.toml")
+        config_file = os.path.join(CREDENTIALS_DIR, "config.toml")
         
         # Check if file exists and get modification time
-        if not os.path.exists(state_file):
+        if not os.path.exists(config_file):
             return {}
         
-        file_time = os.path.getmtime(state_file)
+        file_time = os.path.getmtime(config_file)
         
         # Return cached config if file hasn't changed
         if file_time <= _config_cache_time and _config_cache:
-            return _config_cache.get("config", {})
+            return _config_cache
         
         # Load fresh config
-        with open(state_file, "r", encoding="utf-8") as f:
+        with open(config_file, "r", encoding="utf-8") as f:
             toml_data = toml.load(f)
         
         _config_cache = toml_data
         _config_cache_time = file_time
         
-        return toml_data.get("config", {})
+        return toml_data
     
     except Exception:
         return {}
@@ -120,6 +120,29 @@ def get_config_value(key: str, default: Any = None, env_var: Optional[str] = Non
     
     # Return default
     return default
+
+def save_config_to_toml(config_data: dict) -> None:
+    """Save configuration to config.toml file."""
+    try:
+        config_file = os.path.join(CREDENTIALS_DIR, "config.toml")
+        os.makedirs(os.path.dirname(config_file), exist_ok=True)
+        
+        with open(config_file, "w", encoding="utf-8") as f:
+            toml.dump(config_data, f)
+        
+        # Force cache refresh
+        global _config_cache, _config_cache_time
+        _config_cache = config_data
+        _config_cache_time = os.path.getmtime(config_file)
+        
+    except Exception as e:
+        raise Exception(f"Failed to save config: {e}")
+
+def reload_config_cache() -> None:
+    """Force reload configuration cache."""
+    global _config_cache, _config_cache_time
+    _config_cache = {}
+    _config_cache_time = 0
 
 # Proxy Configuration
 def get_proxy_config():
