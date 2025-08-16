@@ -153,10 +153,32 @@ async def chat_completions(
     if getattr(request_data, "max_tokens", None) is not None and request_data.max_tokens > 65535:
         request_data.max_tokens = 65535
 
-    # 过滤空消息
-    request_data.messages = [m for m in request_data.messages 
-                           if isinstance(getattr(m, "content", None), str) and 
-                           getattr(m, "content", "").strip()]
+    # 过滤空消息，支持文本和图片消息
+    filtered_messages = []
+    for m in request_data.messages:
+        content = getattr(m, "content", None)
+        if content:
+            # 支持字符串类型的文本消息
+            if isinstance(content, str) and content.strip():
+                filtered_messages.append(m)
+            # 支持列表类型的多模态消息（包含图片）
+            elif isinstance(content, list) and len(content) > 0:
+                # 检查是否有有效的内容（文本或图片）
+                has_valid_content = False
+                for part in content:
+                    if isinstance(part, dict):
+                        # 文本部分
+                        if part.get("type") == "text" and part.get("text", "").strip():
+                            has_valid_content = True
+                            break
+                        # 图片部分
+                        elif part.get("type") == "image_url" and part.get("image_url", {}).get("url"):
+                            has_valid_content = True
+                            break
+                if has_valid_content:
+                    filtered_messages.append(m)
+    
+    request_data.messages = filtered_messages
     
     # 处理模型
     model = request_data.model

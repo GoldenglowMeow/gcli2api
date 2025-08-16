@@ -15,8 +15,6 @@ from .config import (
     get_base_model_name,
     get_thinking_budget,
     should_include_thoughts,
-    AUTO_BAN_ENABLED,
-    AUTO_BAN_ERROR_CODES,
     get_proxy_config,
     get_auto_ban_enabled,
     get_auto_ban_error_codes
@@ -39,7 +37,7 @@ def _create_error_response(message: str, status_code: int = 500) -> Response:
         media_type="application/json"
     )
 
-async def _handle_api_error(credential_manager: CredentialManager, status_code: int, current_file: str = None):
+async def _handle_api_error(credential_manager: CredentialManager, status_code: int):
     """Handle API errors by rotating credentials when needed. Error recording should be done before calling this function."""
     if status_code == 429 and credential_manager:
         log.warning("Google API returned status 429 - quota exhausted, switching credentials")
