@@ -17,7 +17,7 @@ CLI_VERSION = "0.1.5"  # Match current gemini-cli version
 CREDENTIALS_DIR = "geminicli/creds"
 
 # 自动封禁配置
-AUTO_BAN_ENABLED = os.getenv("AUTO_BAN", "true").lower() in ("true", "1", "yes", "on")
+AUTO_BAN_ENABLED = os.getenv("AUTO_BAN", "false").lower() in ("true", "1", "yes", "on")
 
 # 需要自动封禁的错误码
 AUTO_BAN_ERROR_CODES = [400, 403]
