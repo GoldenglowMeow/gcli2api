@@ -1,5 +1,5 @@
 pkg update && pkg upgrade -y
-pkg install rust build-essential python git ninja clang cmake uv nodejs binutils -y
+pkg install python git uv nodejs -y
 npm install pm2 -g
 if [ -f "./web.py" ]; then
     # Already in target directory; skip clone and cd
@@ -11,6 +11,7 @@ else
     cd ./gcli2api
 fi
 git pull
-uv sync
+uv init
+uv add -r requirements-termux.txt
 source .venv/bin/activate
 pm2 start .venv/bin/python --name web -- web.py

@@ -1,0 +1,10 @@
+fastapi
+httpx[socks]
+pydantic==1.10.2
+python-dotenv
+google-auth
+google-auth-oauthlib
+hypercorn
+aiofiles
+python-multipart
+toml
