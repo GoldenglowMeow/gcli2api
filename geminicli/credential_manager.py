@@ -227,7 +227,7 @@ class CredentialManager:
                 today_8am = now.replace(hour=8, minute=0, second=0, microsecond=0)
                 next_8am = today_8am if now < today_8am else today_8am + timedelta(days=1)
                 cred_state["cd_until"] = next_8am.isoformat()
-                log.warning(f"Set CD status for {normalized_filename} until {next_8am} (429 + quota exhausted)")
+                log.warning(f"[CD_SET] Set CD status for {normalized_filename} until {next_8am} (429 + quota exhausted)")
                 
                 # 记录更详细的错误信息
                 try:
@@ -280,7 +280,13 @@ class CredentialManager:
             return False
         
         cd_until = datetime.fromisoformat(cred_state["cd_until"])
-        return datetime.now(timezone.utc) < cd_until
+        is_in_cd = datetime.now(timezone.utc) < cd_until
+        
+        # 调试日志
+        if is_in_cd:
+            log.debug(f"[CD_CHECK] {os.path.basename(filename)} is in CD until {cd_until}")
+        
+        return is_in_cd
 
     def is_cred_disabled(self, filename: str) -> bool:
         """检查凭证是否被禁用"""
@@ -348,8 +354,19 @@ class CredentialManager:
         # 过滤掉被禁用和CD状态的文件
         self._credential_files = []
         for filename in all_files:
-            if not self.is_cred_disabled(filename) and not self.is_cred_in_cd(filename):
+            is_disabled = self.is_cred_disabled(filename)
+            is_in_cd = self.is_cred_in_cd(filename)
+            
+            if not is_disabled and not is_in_cd:
                 self._credential_files.append(filename)
+            else:
+                # 记录被过滤的文件信息供调试
+                status_info = []
+                if is_disabled:
+                    status_info.append("disabled")
+                if is_in_cd:
+                    status_info.append("in_cd")
+                log.debug(f"Filtered out {os.path.basename(filename)}: {', '.join(status_info)}")
         
         new_files = set(self._credential_files)
         
@@ -378,7 +395,8 @@ class CredentialManager:
         if not self._credential_files:
             log.warning("No available credential files found")
         else:
-            log.info(f"Found {len(self._credential_files)} available credential files")
+            available_files = [os.path.basename(f) for f in self._credential_files]
+            log.info(f"Found {len(self._credential_files)} available credential files: {available_files}")
 
     async def _sync_state_with_files(self, current_files: List[str]):
         """同步状态文件与实际文件"""
@@ -549,9 +567,22 @@ class CredentialManager:
             self._cached_project_id = None
             self._call_count = 0  # Reset call count
             
+            # 重新发现可用凭证文件（过滤掉CD和禁用的文件）
+            await self._discover_credential_files()
+            
+            # 如果没有可用凭证，早期返回
+            if not self._credential_files:
+                log.error("No available credentials to rotate to")
+                return
+            
             # Move to next credential
             self._current_credential_index = (self._current_credential_index + 1) % len(self._credential_files)
-            log.info(f"Rotated to credential index {self._current_credential_index}")
+            log.info(f"Rotated to credential index {self._current_credential_index}, total available: {len(self._credential_files)}")
+            
+            # 记录当前使用的文件名称供调试
+            if self._credential_files:
+                current_file = self._credential_files[self._current_credential_index]
+                log.info(f"Now using credential: {os.path.basename(current_file)}")
 
     def get_user_project_id(self, creds: Credentials) -> str:
         """Get user project ID from credentials."""
