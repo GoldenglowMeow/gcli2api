@@ -165,11 +165,12 @@ class CredentialManager:
             
             # 改进的CD机制：需要429状态码且响应内容包含"1500"关键词
             if status_code == 429 and "1500" in response_content:
-                # 设置CD状态直到明天UTC 08:00
+                # 设置CD状态直到下一个UTC 08:00
                 now = datetime.now(timezone.utc)
-                tomorrow_8am = (now + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
-                cred_state["cd_until"] = tomorrow_8am.isoformat()
-                log.warning(f"Set CD status for {normalized_filename} until {tomorrow_8am} (429 + '1500' keyword)")
+                today_8am = now.replace(hour=8, minute=0, second=0, microsecond=0)
+                next_8am = today_8am if now < today_8am else today_8am + timedelta(days=1)
+                cred_state["cd_until"] = next_8am.isoformat()
+                log.warning(f"Set CD status for {normalized_filename} until {next_8am} (429 + '1500' keyword)")
             elif status_code == 429:
                 log.info(f"Got 429 error for {os.path.basename(normalized_filename)} but no '1500' keyword in response, no CD set")
             
