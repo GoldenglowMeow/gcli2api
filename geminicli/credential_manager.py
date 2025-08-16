@@ -267,7 +267,7 @@ class CredentialManager:
             # 只有聊天内容生成API成功才清除错误码，其他API不清除
             if api_type == "chat_content":
                 cred_state["error_codes"] = []
-                log.info(f"Cleared error codes for {normalized_filename} due to successful chat content generation")
+                log.debug(f"Cleared error codes for {normalized_filename} due to successful chat content generation")
             
             cred_state["last_success"] = datetime.now(timezone.utc).isoformat()
             
