@@ -1,12 +1,4 @@
 #!/data/data/com.termux/files/usr/bin/bash
-set -euo pipefail
-
-# 简单校验 Termux 环境
-if [ -z "${PREFIX:-}" ] || [[ "$PREFIX" != *"/com.termux/"*"/usr" ]]; then
-  echo "本脚本仅适用于 Termux 环境。"
-  exit 1
-fi
-
 is_root=false
 if [ "$(id -u)" -eq 0 ]; then
   is_root=true
@@ -64,31 +56,22 @@ run "npm install -g pm2"
 
 # 代码获取与依赖安装（在用户家目录操作，避免 root 写入）
 run '
-  cd \"$HOME\"
-  if [ -f \"./web.py\" ]; then
-    proj_dir=\"$HOME\"
-  elif [ -f \"./gcli2api/web.py\" ]; then
-    proj_dir=\"$HOME/gcli2api\"
-  else
-    git clone https://github.com/su-kaka/gcli2api.git
-    proj_dir=\"$HOME/gcli2api\"
-  fi
+    # 直接在当前目录操作
+    proj_dir="$PWD"
+    cd "$proj_dir" || exit 1
 
-  cd \"$proj_dir\"
-  git pull --rebase || git pull
+    # 使用 uv 虚拟环境并安装依赖
+    uv venv
+    source .venv/bin/activate
+    if [ -f requirements-termux.txt ]; then
+        uv pip install -r requirements-termux.txt
+    elif [ -f requirements.txt ]; then
+        uv pip install -r requirements.txt
+    fi
 
-  # 使用 uv 虚拟环境并安装依赖
-  uv venv
-  source .venv/bin/activate
-  if [ -f requirements-termux.txt ]; then
-    uv pip install -r requirements-termux.txt
-  elif [ -f requirements.txt ]; then
-    uv pip install -r requirements.txt
-  fi
-
-  # 用 pm2 启动
-  pm2 start .venv/bin/python --name web -- web.py
-  pm2 save
+    # 用 pm2 启动
+    pm2 start .venv/bin/python --name web -- web.py
+    pm2 save
 '
 
 echo "完成：服务已通过 pm2 启动。使用 'pm2 status' 查看状态。"
