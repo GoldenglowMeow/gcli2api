@@ -93,13 +93,7 @@ async def start_auth(request: AuthStartRequest, token: str = Depends(verify_toke
         # 如果没有提供项目ID，尝试自动检测
         project_id = request.project_id
         if not project_id:
-            logging.info("未提供项目ID，尝试自动检测...")
-            try:
-                project_id = await auto_detect_project_id()
-                if project_id:
-                    logging.info(f"自动检测到项目ID: {project_id}")
-            except Exception as e:
-                logging.debug(f"自动检测项目ID失败: {e}")
+            logging.info("用户未提供项目ID，后续将使用自动检测...")
         
         # 使用认证令牌作为用户会话标识
         user_session = token if token else None

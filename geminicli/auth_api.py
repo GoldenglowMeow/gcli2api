@@ -30,7 +30,7 @@ SCOPES = [
 ]
 
 # 回调服务器配置
-CALLBACK_HOST = os.getenv('OAUTH_CALLBACK_HOST', 'localhost')
+CALLBACK_HOST = 'localhost'
 CALLBACK_PORT = int(os.getenv('OAUTH_CALLBACK_PORT', '8080'))
 CALLBACK_URL = f"http://{CALLBACK_HOST}:{CALLBACK_PORT}"
 
@@ -239,12 +239,6 @@ async def auto_detect_project_id() -> Optional[str]:
     except Exception as e:
         log.debug(f"无法从gcloud配置获取项目ID: {e}")
     
-    # 尝试从环境变量获取
-    env_project_id = os.getenv('GOOGLE_CLOUD_PROJECT') or os.getenv('GCP_PROJECT')
-    if env_project_id:
-        log.info(f"从环境变量自动检测到项目ID: {env_project_id}")
-        return env_project_id
-    
     log.info("无法自动检测项目ID，将需要用户手动输入")
     return None
 
@@ -326,9 +320,8 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
 def start_callback_server():
     """启动回调服务器"""
     try:
-        # 使用配置的主机和端口
-        host = "" if CALLBACK_HOST == "localhost" else CALLBACK_HOST
-        server = HTTPServer((host, CALLBACK_PORT), AuthCallbackHandler)
+        # 回源服务器监听0.0.0.0
+        server = HTTPServer(("0.0.0.0", CALLBACK_PORT), AuthCallbackHandler)
         return server
     except OSError as e:
         if "Address already in use" in str(e):
@@ -1052,15 +1045,15 @@ def start_oauth_server():
     global oauth_server, oauth_server_thread
     
     if oauth_server is not None:
-        log.info(f"OAuth回调服务器已在运行 ({CALLBACK_URL})")
+        log.info(f"OAuth回调服务器已在运行")
         return True
     
     try:
-        host = "" if CALLBACK_HOST == "localhost" else CALLBACK_HOST
-        oauth_server = HTTPServer((host, CALLBACK_PORT), AuthCallbackHandler)
+        # 回源服务器监听0.0.0.0
+        oauth_server = HTTPServer(("0.0.0.0", CALLBACK_PORT), AuthCallbackHandler)
         oauth_server_thread = threading.Thread(target=oauth_server.serve_forever, daemon=True)
         oauth_server_thread.start()
-        log.info(f"OAuth回调服务器已启动，监听地址: {CALLBACK_URL}")
+        log.info(f"OAuth回调服务器已启动")
         return True
     except OSError as e:
         if "Address already in use" in str(e):

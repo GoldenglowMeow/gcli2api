@@ -22,7 +22,6 @@ try:
         generate_auth_token, 
         verify_auth_token,
         asyncio_complete_auth_flow,
-        auto_detect_project_id,
         start_oauth_server,
         stop_oauth_server,
         CALLBACK_URL,
@@ -99,13 +98,7 @@ async def start_auth(request: AuthStartRequest, token: str = Depends(verify_toke
         # 如果没有提供项目ID，尝试自动检测
         project_id = request.project_id
         if not project_id:
-            log.info("未提供项目ID，尝试自动检测...")
-            try:
-                project_id = await auto_detect_project_id()
-                if project_id:
-                    log.info(f"自动检测到项目ID: {project_id}")
-            except Exception as e:
-                log.debug(f"自动检测项目ID失败: {e}")
+            log.info("未提供项目ID，后续将尝试自动检测...")
         
         # 使用认证令牌作为用户会话标识
         user_session = token if token else None
