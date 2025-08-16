@@ -59,7 +59,7 @@ async def serve_auth_page():
     """提供认证页面"""
     try:
         # 读取HTML文件
-        html_file_path = os.path.join(os.path.dirname(__file__), "auth_web_manager.html")
+        html_file_path = "./geminicli/auth_web_manager.html"
         with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
         return HTMLResponse(content=html_content)
