@@ -2,8 +2,15 @@ apt update && apt upgrade -y
 apt install git
 curl -Ls https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env.sh
-git clone https://github.com/su-kaka/gcli2api.git
-cd ./gcli2api
+if [ -f "./web.py" ]; then
+    # Already in target directory; skip clone and cd
+    :
+elif [ -f "./gcli2api/web.py" ]; then
+    cd ./gcli2api
+else
+    git clone https://github.com/su-kaka/gcli2api.git
+    cd ./gcli2api
+fi
 git pull
 uv sync
 source .venv/bin/activate
