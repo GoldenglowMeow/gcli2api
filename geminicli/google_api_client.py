@@ -16,7 +16,10 @@ from .config import (
     get_thinking_budget,
     should_include_thoughts,
     AUTO_BAN_ENABLED,
-    AUTO_BAN_ERROR_CODES
+    AUTO_BAN_ERROR_CODES,
+    get_proxy_config,
+    get_auto_ban_enabled,
+    get_auto_ban_error_codes
 )
 import asyncio
 
@@ -43,7 +46,7 @@ async def _handle_api_error(credential_manager: CredentialManager, status_code: 
         await credential_manager.rotate_to_next_credential()
     
     # 处理自动封禁的错误码
-    elif AUTO_BAN_ENABLED and status_code in AUTO_BAN_ERROR_CODES and credential_manager:
+    elif get_auto_ban_enabled() and status_code in get_auto_ban_error_codes() and credential_manager:
         log.warning(f"Google API returned status {status_code} - auto ban triggered, rotating credentials")
         await credential_manager.rotate_to_next_credential()
 
@@ -102,10 +105,12 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
     final_post_data = json.dumps(final_payload)
 
     try:
+        proxy = get_proxy_config()
+        
         if is_streaming:
             # 流式请求：在生成器里打开 AsyncClient 和 client.stream，确保整个流式周期中 client 不被关闭
             async def event_stream():
-                async with httpx.AsyncClient(timeout=None) as client:
+                async with httpx.AsyncClient(timeout=None, proxy=proxy) as client:
                     async with client.stream(
                         "POST", target_url, content=final_post_data, headers=headers
                     ) as resp:
@@ -115,7 +120,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
             return StreamingResponse(event_stream(), media_type="text/event-stream")
 
         # 非流式请求保持原逻辑
-        async with httpx.AsyncClient(timeout=None) as client:
+        async with httpx.AsyncClient(timeout=None, proxy=proxy) as client:
             resp = await client.post(
                 target_url, content=final_post_data, headers=headers
             )

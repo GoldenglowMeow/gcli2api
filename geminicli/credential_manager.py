@@ -15,14 +15,18 @@ import httpx
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
-from .config import CREDENTIALS_DIR, CODE_ASSIST_ENDPOINT, AUTO_BAN_ENABLED, AUTO_BAN_ERROR_CODES
+from .config import (
+    CREDENTIALS_DIR, CODE_ASSIST_ENDPOINT, AUTO_BAN_ENABLED, AUTO_BAN_ERROR_CODES, 
+    get_proxy_config, get_calls_per_rotation, get_http_timeout, get_max_connections,
+    get_auto_ban_enabled, get_auto_ban_error_codes
+)
 from .utils import get_user_agent, get_client_metadata
 from log import log
 
 class CredentialManager:
     """High-performance credential manager with call-based rotation and caching."""
 
-    def __init__(self, calls_per_rotation: int = 10):  # Switch every 10 calls
+    def __init__(self, calls_per_rotation: int = None):  # Use dynamic config by default
         self._lock = asyncio.Lock()
         self._current_credential_index = 0
         self._credential_files: List[str] = []
@@ -31,7 +35,7 @@ class CredentialManager:
         self._cached_credentials: Optional[Credentials] = None
         self._cached_project_id: Optional[str] = None
         self._call_count = 0
-        self._calls_per_rotation = calls_per_rotation
+        self._calls_per_rotation = calls_per_rotation or get_calls_per_rotation()
         
         # Onboarding state
         self._onboarding_complete = False
@@ -60,10 +64,12 @@ class CredentialManager:
             
             await self._discover_credential_files()
             
-            # Initialize HTTP client with connection pooling
+            # Initialize HTTP client with connection pooling and proxy support
+            proxy = get_proxy_config()
             self._http_client = httpx.AsyncClient(
-                timeout=30.0,
-                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100)
+                timeout=get_http_timeout(),
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=get_max_connections()),
+                proxy=proxy
             )
             
             self._initialized = True
@@ -175,15 +181,17 @@ class CredentialManager:
                 log.info(f"Got 429 error for {os.path.basename(normalized_filename)} but no '1500' keyword in response, no CD set")
             
             # 自动封禁功能
-            log.debug(f"AUTO_BAN check: enabled={AUTO_BAN_ENABLED}, status_code={status_code}, error_codes={AUTO_BAN_ERROR_CODES}")
-            if AUTO_BAN_ENABLED and status_code in AUTO_BAN_ERROR_CODES:
+            auto_ban_enabled = get_auto_ban_enabled()
+            auto_ban_error_codes = get_auto_ban_error_codes()
+            log.debug(f"AUTO_BAN check: enabled={auto_ban_enabled}, status_code={status_code}, error_codes={auto_ban_error_codes}")
+            if auto_ban_enabled and status_code in auto_ban_error_codes:
                 if not cred_state.get("disabled", False):
                     cred_state["disabled"] = True
                     log.warning(f"AUTO_BAN: Disabled credential {os.path.basename(normalized_filename)} due to error {status_code}")
                 else:
                     log.debug(f"Credential {os.path.basename(normalized_filename)} already disabled, error {status_code} recorded")
-            elif AUTO_BAN_ENABLED:
-                log.debug(f"AUTO_BAN enabled but status_code {status_code} not in ban list {AUTO_BAN_ERROR_CODES}")
+            elif auto_ban_enabled:
+                log.debug(f"AUTO_BAN enabled but status_code {status_code} not in ban list {auto_ban_error_codes}")
             else:
                 log.debug(f"AUTO_BAN disabled, status_code {status_code} recorded but no auto ban")
             
@@ -337,8 +345,9 @@ class CredentialManager:
         if not self._credential_files:
             return False
         
-        # Check if we've reached the rotation threshold
-        if self._call_count >= self._calls_per_rotation:
+        # Check if we've reached the rotation threshold (use dynamic config)
+        current_calls_per_rotation = get_calls_per_rotation()
+        if self._call_count >= current_calls_per_rotation:
             return False
         
         # Check token expiration (with 60 second buffer)
@@ -349,7 +358,8 @@ class CredentialManager:
 
     async def _rotate_credential_if_needed(self):
         """Rotate to next credential if call limit reached."""
-        if self._call_count >= self._calls_per_rotation:
+        current_calls_per_rotation = get_calls_per_rotation()
+        if self._call_count >= current_calls_per_rotation:
             self._current_credential_index = (self._current_credential_index + 1) % len(self._credential_files)
             self._call_count = 0  # Reset call counter
             log.info(f"Rotated to credential index {self._current_credential_index}")
@@ -372,9 +382,10 @@ class CredentialManager:
             # 1. 启动时读取一次creds文件
             # 2. 当无任何creds时，每次使用chat都读取一次creds目录积极发现新文件
             # 3. 当有creds文件时，每次轮换的时候读取一次
+            current_calls_per_rotation = get_calls_per_rotation()
             should_check_files = (
                 not self._credential_files or  # 无文件时每次都检查
-                self._call_count >= self._calls_per_rotation  # 轮换时检查
+                self._call_count >= current_calls_per_rotation  # 轮换时检查
             )
             
             if should_check_files:
@@ -382,11 +393,11 @@ class CredentialManager:
             
             # Return cached credentials if valid and files exist
             if self._is_cache_valid() and self._credential_files:
-                log.debug(f"Using cached credentials (call count: {self._call_count}/{self._calls_per_rotation})")
+                log.debug(f"Using cached credentials (call count: {self._call_count}/{current_calls_per_rotation})")
                 return self._cached_credentials, self._cached_project_id
             
             # Cache miss or rotation needed - load fresh credentials
-            if self._call_count >= self._calls_per_rotation:
+            if self._call_count >= current_calls_per_rotation:
                 log.info(f"Rotating credentials after {self._call_count} calls")
             else:
                 log.info("Cache miss - loading fresh credentials")
@@ -466,7 +477,8 @@ class CredentialManager:
         """Increment the call count for tracking rotation."""
         async with self._lock:
             self._call_count += 1
-            log.debug(f"Call count incremented to {self._call_count}/{self._calls_per_rotation}")
+            current_calls_per_rotation = get_calls_per_rotation()
+            log.debug(f"Call count incremented to {self._call_count}/{current_calls_per_rotation}")
 
     async def rotate_to_next_credential(self):
         """Manually rotate to next credential (for error recovery)."""

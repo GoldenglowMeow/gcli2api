@@ -351,6 +351,67 @@
             border-radius: 4px;
             cursor: pointer;
         }
+        
+        /* 配置管理样式 */
+        .config-group {
+            background-color: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        .config-group h4 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 1px solid #e1e4e8;
+            padding-bottom: 8px;
+        }
+        .config-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+            margin-bottom: 5px;
+        }
+        .config-input:focus {
+            border-color: #4285f4;
+            outline: none;
+        }
+        .config-input:disabled {
+            background-color: #f5f5f5;
+            color: #666;
+            cursor: not-allowed;
+        }
+        .config-checkbox {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+        .config-note {
+            display: block;
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 10px;
+            font-style: italic;
+        }
+        .env-locked {
+            position: relative;
+        }
+        .env-locked::after {
+            content: "🔒 环境变量锚定";
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #ffc107;
+            color: #212529;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -373,6 +434,7 @@
                 <button class="tab active" onclick="switchTab('oauth')">OAuth认证</button>
                 <button class="tab" onclick="switchTab('upload')">批量上传</button>
                 <button class="tab" onclick="switchTab('manage')">文件管理</button>
+                <button class="tab" onclick="switchTab('config')">配置管理</button>
             </div>
 
             <!-- OAuth认证标签页 -->
@@ -472,6 +534,84 @@
                 </div>
             </div>
 
+            <!-- 配置管理标签页 -->
+            <div id="configTab" class="tab-content">
+                <h3>配置管理</h3>
+                <p>管理系统配置参数，修改后立即生效</p>
+                
+                <div class="manage-actions">
+                    <button class="refresh-btn" onclick="loadConfig()">刷新配置</button>
+                    <button class="btn" onclick="saveConfig()">保存配置</button>
+                </div>
+                
+                <div id="configSection">
+                    <div class="loading" id="configLoading">正在加载配置...</div>
+                    <div id="configForm" class="hidden">
+                        <div class="config-group">
+                            <h4>基础配置</h4>
+                            
+                            <div class="form-group">
+                                <label for="codeAssistEndpoint">Code Assist Endpoint:</label>
+                                <input type="text" id="codeAssistEndpoint" class="config-input" />
+                                <small class="config-note">Google Cloud Code Assist API端点地址</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="credentialsDir">凭证目录路径:</label>
+                                <input type="text" id="credentialsDir" class="config-input" />
+                                <small class="config-note">存储认证文件的目录路径</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="proxy">代理设置:</label>
+                                <input type="text" id="proxy" class="config-input" placeholder="例如: http://proxy:8080 或 socks5://proxy:1080" />
+                                <small class="config-note">HTTP/HTTPS/SOCKS5代理地址，留空表示不使用代理</small>
+                            </div>
+                        </div>
+                        
+                        <div class="config-group">
+                            <h4>自动封禁配置</h4>
+                            
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="autoBanEnabled" class="config-checkbox" />
+                                    启用自动封禁
+                                </label>
+                                <small class="config-note">遇到指定错误码时自动禁用凭证</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="autoBanErrorCodes">自动封禁错误码:</label>
+                                <input type="text" id="autoBanErrorCodes" class="config-input" placeholder="例如: 400,403" />
+                                <small class="config-note">用逗号分隔的错误码列表</small>
+                            </div>
+                        </div>
+                        
+                        <div class="config-group">
+                            <h4>性能配置</h4>
+                            
+                            <div class="form-group">
+                                <label for="callsPerRotation">凭证轮换调用次数:</label>
+                                <input type="number" id="callsPerRotation" class="config-input" min="1" max="100" />
+                                <small class="config-note">每个凭证使用多少次后轮换到下一个</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="httpTimeout">HTTP超时时间(秒):</label>
+                                <input type="number" id="httpTimeout" class="config-input" min="5" max="300" />
+                                <small class="config-note">HTTP请求超时时间</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="maxConnections">最大连接数:</label>
+                                <input type="number" id="maxConnections" class="config-input" min="10" max="1000" />
+                                <small class="config-note">HTTP连接池最大连接数</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div id="statusSection"></div>
         </div>
     </div>
@@ -554,6 +694,10 @@
             // 如果切换到文件管理页面，自动加载数据
             if (tabName === 'manage') {
                 refreshCredsStatus();
+            }
+            // 如果切换到配置管理页面，自动加载配置
+            if (tabName === 'config') {
+                loadConfig();
             }
         }
 
@@ -1047,6 +1191,113 @@
             }
             
             await credAction(filename, 'delete');
+        }
+
+        // 配置管理相关函数
+        let currentConfig = {};
+        let envLockedFields = new Set();
+
+        async function loadConfig() {
+            const configLoading = document.getElementById('configLoading');
+            const configForm = document.getElementById('configForm');
+            
+            try {
+                configLoading.style.display = 'block';
+                configForm.classList.add('hidden');
+                
+                const response = await fetch('/config/get', {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentConfig = data.config;
+                    envLockedFields = new Set(data.env_locked || []);
+                    
+                    populateConfigForm();
+                    configForm.classList.remove('hidden');
+                    showStatus('配置加载成功', 'success');
+                } else {
+                    showStatus(`加载配置失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('loadConfig error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            } finally {
+                configLoading.style.display = 'none';
+            }
+        }
+
+        function populateConfigForm() {
+            // 基础配置
+            setConfigField('codeAssistEndpoint', currentConfig.code_assist_endpoint || '');
+            setConfigField('credentialsDir', currentConfig.credentials_dir || '');
+            setConfigField('proxy', currentConfig.proxy || '');
+            
+            // 自动封禁配置
+            document.getElementById('autoBanEnabled').checked = currentConfig.auto_ban_enabled || false;
+            setConfigField('autoBanErrorCodes', (currentConfig.auto_ban_error_codes || []).join(','));
+            
+            // 性能配置
+            setConfigField('callsPerRotation', currentConfig.calls_per_rotation || 10);
+            setConfigField('httpTimeout', currentConfig.http_timeout || 30);
+            setConfigField('maxConnections', currentConfig.max_connections || 100);
+        }
+
+        function setConfigField(fieldId, value) {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.value = value;
+                
+                // 检查是否被环境变量锚定
+                const configKey = fieldId.replace(/([A-Z])/g, '_$1').toLowerCase();
+                if (envLockedFields.has(configKey)) {
+                    field.disabled = true;
+                    field.classList.add('env-locked');
+                } else {
+                    field.disabled = false;
+                    field.classList.remove('env-locked');
+                }
+            }
+        }
+
+        async function saveConfig() {
+            try {
+                const config = {
+                    code_assist_endpoint: document.getElementById('codeAssistEndpoint').value.trim(),
+                    credentials_dir: document.getElementById('credentialsDir').value.trim(),
+                    proxy: document.getElementById('proxy').value.trim(),
+                    auto_ban_enabled: document.getElementById('autoBanEnabled').checked,
+                    auto_ban_error_codes: document.getElementById('autoBanErrorCodes').value
+                        .split(',')
+                        .map(code => parseInt(code.trim()))
+                        .filter(code => !isNaN(code)),
+                    calls_per_rotation: parseInt(document.getElementById('callsPerRotation').value) || 10,
+                    http_timeout: parseInt(document.getElementById('httpTimeout').value) || 30,
+                    max_connections: parseInt(document.getElementById('maxConnections').value) || 100
+                };
+
+                const response = await fetch('/config/save', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ config: config })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus('配置保存成功，已立即生效', 'success');
+                    // 重新加载配置以获取最新状态
+                    setTimeout(() => loadConfig(), 1000);
+                } else {
+                    showStatus(`保存配置失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('saveConfig error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
         }
 
         // 页面加载时检查状态

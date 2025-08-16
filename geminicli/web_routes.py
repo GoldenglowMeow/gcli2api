@@ -43,6 +43,9 @@ class CredFileActionRequest(BaseModel):
     filename: str
     action: str  # enable, disable, delete
 
+class ConfigSaveRequest(BaseModel):
+    config: dict
+
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """验证认证令牌"""
@@ -364,4 +367,174 @@ async def download_all_creds(token: str = Depends(verify_token)):
         
     except Exception as e:
         logging.error(f"打包下载失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/config/get")
+async def get_config(token: str = Depends(verify_token)):
+    """获取当前配置"""
+    try:
+        await ensure_credential_manager_initialized()
+        
+        # 导入配置相关模块
+        from . import config
+        import toml
+        
+        # 读取当前配置（包括环境变量和TOML文件中的配置）
+        current_config = {}
+        env_locked = []
+        
+        # 基础配置
+        if os.getenv("CODE_ASSIST_ENDPOINT"):
+            current_config["code_assist_endpoint"] = os.getenv("CODE_ASSIST_ENDPOINT")
+            env_locked.append("code_assist_endpoint")
+        else:
+            current_config["code_assist_endpoint"] = getattr(config, 'CODE_ASSIST_ENDPOINT', '')
+        
+        if os.getenv("CREDENTIALS_DIR"):
+            current_config["credentials_dir"] = os.getenv("CREDENTIALS_DIR")
+            env_locked.append("credentials_dir")
+        else:
+            current_config["credentials_dir"] = getattr(config, 'CREDENTIALS_DIR', '')
+        
+        if os.getenv("PROXY"):
+            current_config["proxy"] = os.getenv("PROXY")
+            env_locked.append("proxy")
+        else:
+            current_config["proxy"] = ""
+        
+        # 自动封禁配置
+        if os.getenv("AUTO_BAN"):
+            current_config["auto_ban_enabled"] = os.getenv("AUTO_BAN", "true").lower() in ("true", "1", "yes", "on")
+            env_locked.append("auto_ban_enabled")
+        else:
+            current_config["auto_ban_enabled"] = getattr(config, 'AUTO_BAN_ENABLED', True)
+        
+        current_config["auto_ban_error_codes"] = getattr(config, 'AUTO_BAN_ERROR_CODES', [400, 403])
+        
+        # 尝试从TOML文件读取额外配置
+        try:
+            state_file = os.path.join(config.CREDENTIALS_DIR, "creds_state.toml")
+            if os.path.exists(state_file):
+                with open(state_file, "r", encoding="utf-8") as f:
+                    toml_data = toml.load(f)
+                
+                # 合并TOML配置（不覆盖环境变量）
+                toml_config = toml_data.get("config", {})
+                for key, value in toml_config.items():
+                    if key not in env_locked:
+                        current_config[key] = value
+        except Exception as e:
+            logging.warning(f"读取TOML配置失败: {e}")
+        
+        # 设置默认值
+        current_config.setdefault("calls_per_rotation", 10)
+        current_config.setdefault("http_timeout", 30)
+        current_config.setdefault("max_connections", 100)
+        
+        return JSONResponse(content={
+            "config": current_config,
+            "env_locked": env_locked
+        })
+        
+    except Exception as e:
+        logging.error(f"获取配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/config/save")
+async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_token)):
+    """保存配置到TOML文件"""
+    try:
+        await ensure_credential_manager_initialized()
+        
+        from . import config
+        import toml
+        
+        new_config = request.config
+        
+        # 验证配置项
+        if "calls_per_rotation" in new_config:
+            if not isinstance(new_config["calls_per_rotation"], int) or new_config["calls_per_rotation"] < 1:
+                raise HTTPException(status_code=400, detail="凭证轮换调用次数必须是大于0的整数")
+        
+        if "http_timeout" in new_config:
+            if not isinstance(new_config["http_timeout"], int) or new_config["http_timeout"] < 5:
+                raise HTTPException(status_code=400, detail="HTTP超时时间必须是大于等于5的整数")
+        
+        if "max_connections" in new_config:
+            if not isinstance(new_config["max_connections"], int) or new_config["max_connections"] < 10:
+                raise HTTPException(status_code=400, detail="最大连接数必须是大于等于10的整数")
+        
+        # 读取现有的TOML文件
+        state_file = os.path.join(config.CREDENTIALS_DIR, "creds_state.toml")
+        existing_data = {}
+        
+        try:
+            if os.path.exists(state_file):
+                with open(state_file, "r", encoding="utf-8") as f:
+                    existing_data = toml.load(f)
+        except Exception as e:
+            logging.warning(f"读取现有TOML文件失败: {e}")
+        
+        # 更新配置部分
+        if "config" not in existing_data:
+            existing_data["config"] = {}
+        
+        # 只更新不被环境变量锁定的配置项
+        env_locked_keys = set()
+        if os.getenv("CODE_ASSIST_ENDPOINT"):
+            env_locked_keys.add("code_assist_endpoint")
+        if os.getenv("CREDENTIALS_DIR"):
+            env_locked_keys.add("credentials_dir")
+        if os.getenv("PROXY"):
+            env_locked_keys.add("proxy")
+        if os.getenv("AUTO_BAN"):
+            env_locked_keys.add("auto_ban_enabled")
+        
+        for key, value in new_config.items():
+            if key not in env_locked_keys:
+                existing_data["config"][key] = value
+        
+        # 写入TOML文件
+        os.makedirs(os.path.dirname(state_file), exist_ok=True)
+        with open(state_file, "w", encoding="utf-8") as f:
+            toml.dump(existing_data, f)
+        
+        # 热更新配置到内存中的模块（如果可能）
+        try:
+            # 更新credential_manager的配置
+            if "calls_per_rotation" in new_config and not env_locked_keys.intersection({"calls_per_rotation"}):
+                credential_manager._calls_per_rotation = new_config["calls_per_rotation"]
+            
+            # 重新初始化HTTP客户端以应用新的代理配置（如果代理配置更改了）
+            if "proxy" in new_config and "proxy" not in env_locked_keys:
+                # 更新模块级配置
+                import importlib
+                importlib.reload(config)
+                
+                # 重新创建HTTP客户端
+                if credential_manager._http_client:
+                    await credential_manager._http_client.aclose()
+                    proxy = config.get_proxy_config()
+                    credential_manager._http_client = __import__('httpx').AsyncClient(
+                        timeout=new_config.get("http_timeout", 30),
+                        limits=__import__('httpx').Limits(
+                            max_keepalive_connections=20, 
+                            max_connections=new_config.get("max_connections", 100)
+                        ),
+                        proxy=proxy
+                    )
+        except Exception as e:
+            logging.warning(f"热更新配置失败: {e}")
+        
+        return JSONResponse(content={
+            "message": "配置保存成功",
+            "saved_config": {k: v for k, v in new_config.items() if k not in env_locked_keys}
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"保存配置失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
