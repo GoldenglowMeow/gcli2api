@@ -153,7 +153,7 @@ def get_proxy_config():
     
     # httpx supports http, https, socks5 proxies
     # Format: http://proxy:port, https://proxy:port, socks5://proxy:port
-    return httpx.Proxy(proxy_url)
+    return proxy_url
 
 # Dynamic configuration getters
 def get_calls_per_rotation() -> int:
