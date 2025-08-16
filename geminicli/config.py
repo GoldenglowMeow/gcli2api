@@ -5,7 +5,7 @@ Centralizes all configuration to avoid duplication across modules.
 import os
 
 # API Endpoints
-CODE_ASSIST_ENDPOINT = "https://cloudcode-pa.googleapis.com"
+CODE_ASSIST_ENDPOINT = os.getenv("CODE_ASSIST_ENDPOINT", "https://cloudcode-pa.googleapis.com")
 
 # Client Configuration
 CLI_VERSION = "0.1.5"  # Match current gemini-cli version
