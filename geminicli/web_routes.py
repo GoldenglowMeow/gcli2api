@@ -535,14 +535,16 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
                 if credential_manager._http_client:
                     await credential_manager._http_client.aclose()
                     proxy = config.get_proxy_config()
-                    credential_manager._http_client = __import__('httpx').AsyncClient(
-                        timeout=new_config.get("http_timeout", 30),
-                        limits=__import__('httpx').Limits(
+                    client_kwargs = {
+                        "timeout": new_config.get("http_timeout", 30),
+                        "limits": __import__('httpx').Limits(
                             max_keepalive_connections=20, 
                             max_connections=new_config.get("max_connections", 100)
-                        ),
-                        proxy=proxy
-                    )
+                        )
+                    }
+                    if proxy:
+                        client_kwargs["proxy"] = proxy
+                    credential_manager._http_client = __import__('httpx').AsyncClient(**client_kwargs)
         except Exception as e:
             logging.warning(f"热更新配置失败: {e}")
         

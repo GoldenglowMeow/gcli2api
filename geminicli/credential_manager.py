@@ -67,11 +67,13 @@ class CredentialManager:
             
             # Initialize HTTP client with connection pooling and proxy support
             proxy = get_proxy_config()
-            self._http_client = httpx.AsyncClient(
-                timeout=get_http_timeout(),
-                limits=httpx.Limits(max_keepalive_connections=20, max_connections=get_max_connections()),
-                proxy=proxy
-            )
+            client_kwargs = {
+                "timeout": get_http_timeout(),
+                "limits": httpx.Limits(max_keepalive_connections=20, max_connections=get_max_connections())
+            }
+            if proxy:
+                client_kwargs["proxy"] = proxy
+            self._http_client = httpx.AsyncClient(**client_kwargs)
             
             self._initialized = True
 

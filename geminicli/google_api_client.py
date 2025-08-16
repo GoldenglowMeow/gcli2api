@@ -114,7 +114,10 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
         if is_streaming:
             # 流式请求：在生成器里打开 AsyncClient 和 client.stream，确保整个流式周期中 client 不被关闭
             async def event_stream():
-                async with httpx.AsyncClient(timeout=None, proxy=proxy) as client:
+                client_kwargs = {"timeout": None}
+                if proxy:
+                    client_kwargs["proxy"] = proxy
+                async with httpx.AsyncClient(**client_kwargs) as client:
                     async with client.stream(
                         "POST", target_url, content=final_post_data, headers=headers
                     ) as resp:
@@ -124,7 +127,10 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
             return StreamingResponse(event_stream(), media_type="text/event-stream")
 
         # 非流式请求保持原逻辑
-        async with httpx.AsyncClient(timeout=None, proxy=proxy) as client:
+        client_kwargs = {"timeout": None}
+        if proxy:
+            client_kwargs["proxy"] = proxy
+        async with httpx.AsyncClient(**client_kwargs) as client:
             resp = await client.post(
                 target_url, content=final_post_data, headers=headers
             )
