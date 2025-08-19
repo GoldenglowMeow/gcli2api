@@ -229,6 +229,9 @@ async def get_creds_status(token: str = Depends(verify_token)):
     try:
         await ensure_credential_manager_initialized()
         
+        # 强制从文件重新加载最新状态
+        await credential_manager._load_state()
+        
         # 获取状态时不要调用_discover_credential_files，因为它会过滤被禁用的文件
         # 直接获取所有文件的状态
         status = credential_manager.get_creds_status()
