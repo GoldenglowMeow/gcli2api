@@ -71,5 +71,3 @@ uv add -r requirements-termux.txt
 echo "激活虚拟环境并启动服务..."
 source .venv/bin/activate
 pm2 start .venv/bin/python --name web -- web.py
-
-echo "安装和启动完成！"
