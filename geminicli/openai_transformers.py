@@ -4,7 +4,7 @@ This module contains all the logic for transforming requests and responses betwe
 """
 import time
 import uuid
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from .models import OpenAIChatCompletionRequest
 from .config import (
@@ -25,16 +25,25 @@ def openai_request_to_gemini(openai_request: OpenAIChatCompletionRequest) -> Dic
         Dictionary in Gemini API format
     """
     contents = []
+    system_instructions = []
     
     # Process each message in the conversation
     for message in openai_request.messages:
         role = message.role
         
-        # Map OpenAI roles to Gemini roles
+        # Handle system messages separately - collect them for system_instruction
+        if role == "system":
+            if isinstance(message.content, list):
+                for part in message.content:
+                    if part.get("type") == "text":
+                        system_instructions.append(part.get("text", ""))
+            else:
+                system_instructions.append(message.content)
+            continue
+        
+        # Map OpenAI roles to Gemini roles for non-system messages
         if role == "assistant":
             role = "model"
-        elif role == "system":
-            role = "user"  # Gemini treats system messages as user messages
         
         # Handle different content types (string vs list of parts)
         if isinstance(message.content, list):
@@ -101,6 +110,18 @@ def openai_request_to_gemini(openai_request: OpenAIChatCompletionRequest) -> Dic
         "safetySettings": DEFAULT_SAFETY_SETTINGS,
         "model": get_base_model_name(openai_request.model)  # Use base model name for API call
     }
+    
+    # Add system_instruction if there are system messages
+    if system_instructions:
+        # Combine all system messages with newlines
+        combined_system_instruction = "\n\n".join(system_instructions)
+        request_payload["system_instruction"] = {
+            "parts": [
+                {
+                    "text": combined_system_instruction
+                }
+            ]
+        }
     
     # Add thinking configuration for thinking models
     thinking_budget = get_thinking_budget(openai_request.model)
