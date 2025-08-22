@@ -366,6 +366,12 @@ class CredentialManager:
                     
                     # Parse the JSON credential from environment variable
                     cred_data = json.loads(env_creds)
+                    
+                    # Auto-add 'type' field if missing but has required OAuth fields
+                    if 'type' not in cred_data and all(key in cred_data for key in ['client_id', 'refresh_token']):
+                        cred_data['type'] = 'authorized_user'
+                        log.debug(f"Auto-added 'type' field to credential from {env_var_name}")
+                    
                     if all(key in cred_data for key in ['type', 'client_id', 'refresh_token']):
                         # Save to a temporary file for compatibility with existing code
                         temp_file = os.path.join(CREDENTIALS_DIR, f"env_credential_{i}.json")
@@ -557,6 +563,11 @@ class CredentialManager:
             if "refresh_token" not in creds_data or not creds_data["refresh_token"]:
                 log.warning(f"No refresh token in {file_path}")
                 return None, None
+            
+            # Auto-add 'type' field if missing but has required OAuth fields
+            if 'type' not in creds_data and all(key in creds_data for key in ['client_id', 'refresh_token']):
+                creds_data['type'] = 'authorized_user'
+                log.debug(f"Auto-added 'type' field to credential from file {file_path}")
             
             # Handle different credential formats
             if "access_token" in creds_data and "token" not in creds_data:
