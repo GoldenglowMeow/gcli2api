@@ -8,6 +8,7 @@ import asyncio
 import glob
 import aiofiles
 import toml
+import base64
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Tuple, Dict, Any
 import httpx
@@ -345,11 +346,53 @@ class CredentialManager:
         old_files = set(self._credential_files)
         all_files = []
         
-        credentials_dir = CREDENTIALS_DIR
-        patterns = [os.path.join(credentials_dir, "*.json")]
+        # First, check environment variables for credentials
+        env_creds_loaded = False
+        for i in range(1, 11):  # Support up to 10 credentials from env vars
+            env_var_name = f"GOOGLE_CREDENTIALS_{i}" if i > 1 else "GOOGLE_CREDENTIALS"
+            env_creds = os.getenv(env_var_name)
+            
+            if env_creds:
+                try:
+                    # Try to decode if it's base64 encoded
+                    try:
+                        # Check if it's base64 encoded
+                        decoded = base64.b64decode(env_creds)
+                        env_creds = decoded.decode('utf-8')
+                        log.debug(f"Decoded base64 credential from {env_var_name}")
+                    except:
+                        # Not base64, use as is
+                        pass
+                    
+                    # Parse the JSON credential from environment variable
+                    cred_data = json.loads(env_creds)
+                    if all(key in cred_data for key in ['type', 'client_id', 'refresh_token']):
+                        # Save to a temporary file for compatibility with existing code
+                        temp_file = os.path.join(CREDENTIALS_DIR, f"env_credential_{i}.json")
+                        os.makedirs(CREDENTIALS_DIR, exist_ok=True)
+                        with open(temp_file, 'w') as f:
+                            json.dump(cred_data, f)
+                        all_files.append(temp_file)
+                        log.info(f"Loaded credential from environment variable: {env_var_name}")
+                        env_creds_loaded = True
+                    else:
+                        log.warning(f"Invalid credential format in {env_var_name}")
+                except json.JSONDecodeError as e:
+                    log.warning(f"Failed to parse JSON from {env_var_name}: {e}")
+                except Exception as e:
+                    log.warning(f"Error loading credential from {env_var_name}: {e}")
         
-        for pattern in patterns:
-            all_files.extend(glob.glob(pattern))
+        # If no env credentials, discover from directory
+        if not env_creds_loaded:
+            credentials_dir = CREDENTIALS_DIR
+            patterns = [os.path.join(credentials_dir, "*.json")]
+            
+            for pattern in patterns:
+                discovered_files = glob.glob(pattern)
+                # Skip env_credential files if loading from directory
+                for file in discovered_files:
+                    if not os.path.basename(file).startswith("env_credential_"):
+                        all_files.append(file)
         
         all_files = sorted(list(set(all_files)))
         

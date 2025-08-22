@@ -4,21 +4,23 @@ import asyncio
 from contextlib import asynccontextmanager
 from functools import lru_cache
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 from dotenv import load_dotenv
 
 from log import log
-from models import Model, ModelList, ChatCompletionRequest
+from models import Model, ModelList, ChatCompletionRequest, UniversalChatRequest
 from geminicli.client import GeminiCLIClient
 from geminicli.web_routes import router as geminicli_router
+from format_detector import validate_and_normalize_request
 
 load_dotenv()
 
 # 认证配置
 PASSWORD = os.getenv("PASSWORD", "pwd")
+PORT = int(os.getenv("PORT", "7861"))
 
 # 全局变量
 geminicli_client = None
@@ -136,10 +138,30 @@ async def list_models():
 
 @app.post("/v1/chat/completions")
 async def chat_completions(
-    request_data: ChatCompletionRequest,
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     token = authenticate(credentials)
+    
+    # Get raw request body
+    try:
+        raw_data = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+    
+    # Auto-detect and normalize format
+    try:
+        normalized_data = validate_and_normalize_request(raw_data)
+    except Exception as e:
+        log.error(f"Request normalization failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Request format error: {str(e)}")
+    
+    # Create request object from normalized data
+    try:
+        request_data = ChatCompletionRequest(**normalized_data)
+    except Exception as e:
+        log.error(f"Request validation failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Request validation error: {str(e)}")
     
     # 健康检查
     if (len(request_data.messages) == 1 and 
@@ -207,13 +229,14 @@ if __name__ == "__main__":
 
     print("启动配置:")
     print(f"  GeminiCLI客户端: 启用")
-    print("API地址 http://127.0.0.1:7861/v1")
-    print("OAuth认证管理地址  http://127.0.0.1:7861/auth")
-    print("默认密码 pwd")
+    print(f"API地址 http://127.0.0.1:{PORT}/v1")
+    print(f"OAuth认证管理地址  http://127.0.0.1:{PORT}/auth")
+    print(f"默认密码 {PASSWORD}")
     print("使用PASSWORD环境变量来设置密码")
+    print(f"使用PORT环境变量来设置端口 (当前: {PORT})")
 
     config = Config()
-    config.bind = ["0.0.0.0:7861"]
+    config.bind = [f"0.0.0.0:{PORT}"]
     config.accesslog = "-"
     config.errorlog = "-"
     config.loglevel = "INFO"

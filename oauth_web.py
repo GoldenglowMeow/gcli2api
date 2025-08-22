@@ -191,10 +191,13 @@ async def lifespan(app: FastAPI):
     log.info(f"OAuth回调地址: {CALLBACK_URL}")
     log.info("Web服务已由 ASGI 服务器启动")
 
+    # 获取端口配置
+    port = int(os.getenv("PORT", "7861"))
+    
     print("\n" + "="*60)
     print("🚀 Google OAuth 认证服务已启动")
     print("="*60)
-    print(f"📱 Web界面: http://localhost:7861")
+    print(f"📱 Web界面: http://localhost:{port}")
     print(f"🔗 OAuth回调: {CALLBACK_URL}")
     print(f"🔐 默认密码: {'已设置' if password else 'pwd (请设置PASSWORD环境变量)'}")
     print("="*60 + "\n")
@@ -253,8 +256,11 @@ if __name__ == "__main__":
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
 
+    # 从环境变量获取端口，默认7861
+    PORT = int(os.getenv("PORT", "7861"))
+    
     config = Config()
-    config.bind = ["0.0.0.0:7861"]
+    config.bind = [f"0.0.0.0:{PORT}"]
     config.accesslog = "-"
     config.errorlog = "-"
     config.loglevel = "INFO"
