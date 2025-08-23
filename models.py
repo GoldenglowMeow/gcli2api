@@ -1,7 +1,4 @@
 import time
-from pydantic import BaseModel, Field
-from typing import List
-import time
 import uuid
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal, Union
@@ -39,3 +36,33 @@ class ChatCompletionRequest(BaseModel):
     response_logprobs: Optional[bool] = None
     n: Optional[int] = None
     response_format: Optional[Dict[str, Any]] = None
+
+# Gemini format models
+class GeminiPart(BaseModel):
+    text: Optional[str] = None
+    inlineData: Optional[Dict[str, str]] = None  # {mimeType: str, data: str}
+
+class GeminiContent(BaseModel):
+    role: Literal["user", "model"]
+    parts: List[GeminiPart]
+
+class GeminiGenerationConfig(BaseModel):
+    temperature: Optional[float] = None
+    topP: Optional[float] = None
+    topK: Optional[int] = None
+    maxOutputTokens: Optional[int] = None
+    stopSequences: Optional[List[str]] = None
+    frequencyPenalty: Optional[float] = None
+    presencePenalty: Optional[float] = None
+    candidateCount: Optional[int] = None
+    seed: Optional[int] = None
+
+class GeminiRequest(BaseModel):
+    model: Optional[str] = None
+    contents: List[GeminiContent]
+    systemInstruction: Optional[Union[str, Dict[str, Any]]] = None
+    generationConfig: Optional[GeminiGenerationConfig] = None
+    stream: Optional[bool] = False
+
+# Union type for accepting both formats
+UniversalChatRequest = Union[ChatCompletionRequest, GeminiRequest, Dict[str, Any]]
