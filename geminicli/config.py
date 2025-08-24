@@ -182,3 +182,33 @@ def get_auto_ban_error_codes() -> list:
     if toml_codes and isinstance(toml_codes, list):
         return toml_codes
     return AUTO_BAN_ERROR_CODES
+
+def get_retry_429_max_retries() -> int:
+    """Get max retries for 429 errors."""
+    env_value = os.getenv("RETRY_429_MAX_RETRIES")
+    if env_value:
+        try:
+            return int(env_value)
+        except ValueError:
+            pass
+    
+    return int(get_config_value("retry_429_max_retries", 20))
+
+def get_retry_429_enabled() -> bool:
+    """Get 429 retry enabled setting."""
+    env_value = os.getenv("RETRY_429_ENABLED")
+    if env_value:
+        return env_value.lower() in ("true", "1", "yes", "on")
+    
+    return bool(get_config_value("retry_429_enabled", True))
+
+def get_retry_429_interval() -> float:
+    """Get 429 retry interval in seconds."""
+    env_value = os.getenv("RETRY_429_INTERVAL")
+    if env_value:
+        try:
+            return float(env_value)
+        except ValueError:
+            pass
+    
+    return float(get_config_value("retry_429_interval", 0.1))

@@ -741,6 +741,30 @@
                                 <small class="config-note">HTTP连接池最大连接数</small>
                             </div>
                         </div>
+                        
+                        <div class="config-group">
+                            <h4>429重试配置</h4>
+                            
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="retry429Enabled" class="config-checkbox" />
+                                    启用429重试
+                                </label>
+                                <small class="config-note">遇到429错误时自动重试</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="retry429MaxRetries">429重试次数:</label>
+                                <input type="number" id="retry429MaxRetries" class="config-input" min="1" max="50" />
+                                <small class="config-note">遇到429错误时的最大重试次数</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="retry429Interval">429重试间隔(秒):</label>
+                                <input type="number" id="retry429Interval" class="config-input" min="0.01" max="10" step="0.01" />
+                                <small class="config-note">遇到429错误时每两次重试间的等待时间</small>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1568,6 +1592,11 @@
             setConfigField('callsPerRotation', currentConfig.calls_per_rotation || 10);
             setConfigField('httpTimeout', currentConfig.http_timeout || 30);
             setConfigField('maxConnections', currentConfig.max_connections || 100);
+            
+            // 429重试配置
+            document.getElementById('retry429Enabled').checked = currentConfig.retry_429_enabled || false;
+            setConfigField('retry429MaxRetries', currentConfig.retry_429_max_retries || 20);
+            setConfigField('retry429Interval', currentConfig.retry_429_interval || 0.1);
         }
 
         function setConfigField(fieldId, value) {
@@ -1600,7 +1629,10 @@
                         .filter(code => !isNaN(code)),
                     calls_per_rotation: parseInt(document.getElementById('callsPerRotation').value) || 10,
                     http_timeout: parseInt(document.getElementById('httpTimeout').value) || 30,
-                    max_connections: parseInt(document.getElementById('maxConnections').value) || 100
+                    max_connections: parseInt(document.getElementById('maxConnections').value) || 100,
+                    retry_429_enabled: document.getElementById('retry429Enabled').checked,
+                    retry_429_max_retries: parseInt(document.getElementById('retry429MaxRetries').value) || 20,
+                    retry_429_interval: parseFloat(document.getElementById('retry429Interval').value) || 0.1
                 };
 
                 const response = await fetch('/config/save', {
