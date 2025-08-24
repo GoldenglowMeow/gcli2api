@@ -67,10 +67,16 @@ def find_available_port(start_port: int = None) -> int:
         raise RuntimeError("无法找到可用端口")
 
 def create_callback_server(port: int) -> HTTPServer:
-    """创建指定端口的回调服务器"""
+    """创建指定端口的回调服务器，优化快速关闭"""
     try:
         # 服务器监听0.0.0.0
         server = HTTPServer(("0.0.0.0", port), AuthCallbackHandler)
+        
+        # 设置socket选项以支持快速关闭
+        server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 设置较短的超时时间
+        server.timeout = 1.0
+        
         log.info(f"创建OAuth回调服务器，监听端口: {port}")
         return server
     except OSError as e:
@@ -580,14 +586,14 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
             # 清理使用过的流程
             if state in auth_flows:
                 flow_data_to_clean = auth_flows[state]
-                # 关闭服务器
+                # 快速关闭服务器
                 try:
                     if flow_data_to_clean.get('server'):
-                        flow_data_to_clean['server'].shutdown()
-                        flow_data_to_clean['server'].server_close()
-                        log.info(f"已关闭端口 {flow_data_to_clean.get('callback_port')} 的OAuth回调服务器")
+                        server = flow_data_to_clean['server']
+                        port = flow_data_to_clean.get('callback_port')
+                        async_shutdown_server(server, port)
                 except Exception as e:
-                    log.debug(f"关闭服务器时出错: {e}")
+                    log.debug(f"启动异步关闭服务器时出错: {e}")
                 
                 del auth_flows[state]
             
@@ -844,14 +850,14 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
             # 清理使用过的流程
             if state in auth_flows:
                 flow_data_to_clean = auth_flows[state]
-                # 关闭服务器
+                # 快速关闭服务器
                 try:
                     if flow_data_to_clean.get('server'):
-                        flow_data_to_clean['server'].shutdown()
-                        flow_data_to_clean['server'].server_close()
-                        log.info(f"已关闭端口 {flow_data_to_clean.get('callback_port')} 的OAuth回调服务器")
+                        server = flow_data_to_clean['server']
+                        port = flow_data_to_clean.get('callback_port')
+                        async_shutdown_server(server, port)
                 except Exception as e:
-                    log.debug(f"关闭服务器时出错: {e}")
+                    log.debug(f"启动异步关闭服务器时出错: {e}")
                 
                 del auth_flows[state]
             
@@ -917,6 +923,41 @@ def save_credentials(creds: Credentials, project_id: str) -> str:
     return file_path
 
 
+def async_shutdown_server(server, port):
+    """异步关闭OAuth回调服务器，避免阻塞主流程"""
+    def shutdown_server_async():
+        try:
+            # 设置一个标志来跟踪关闭状态
+            shutdown_completed = threading.Event()
+            
+            def do_shutdown():
+                try:
+                    server.shutdown()
+                    server.server_close()
+                    shutdown_completed.set()
+                    log.info(f"已关闭端口 {port} 的OAuth回调服务器")
+                except Exception as e:
+                    shutdown_completed.set()
+                    log.debug(f"关闭服务器时出错: {e}")
+            
+            # 在单独线程中执行关闭操作
+            shutdown_worker = threading.Thread(target=do_shutdown, daemon=True)
+            shutdown_worker.start()
+            
+            # 等待最多5秒，如果超时就放弃等待
+            if shutdown_completed.wait(timeout=5):
+                log.debug(f"端口 {port} 服务器关闭完成")
+            else:
+                log.warning(f"端口 {port} 服务器关闭超时，但不阻塞主流程")
+                
+        except Exception as e:
+            log.debug(f"异步关闭服务器时出错: {e}")
+    
+    # 在后台线程中关闭服务器，不阻塞主流程
+    shutdown_thread = threading.Thread(target=shutdown_server_async, daemon=True)
+    shutdown_thread.start()
+    log.debug(f"开始异步关闭端口 {port} 的OAuth回调服务器")
+
 def cleanup_expired_flows():
     """清理过期的认证流程"""
     current_time = time.time()
@@ -928,14 +969,14 @@ def cleanup_expired_flows():
     
     for state in expired_states:
         flow_data = auth_flows[state]
-        # 关闭可能存在的服务器
+        # 快速关闭可能存在的服务器
         try:
             if flow_data.get('server'):
-                flow_data['server'].shutdown()
-                flow_data['server'].server_close()
-                log.info(f"清理过期流程时关闭端口 {flow_data.get('callback_port')} 的服务器")
+                server = flow_data['server']
+                port = flow_data.get('callback_port')
+                async_shutdown_server(server, port)
         except Exception as e:
-            log.debug(f"清理过期流程时关闭服务器失败: {e}")
+            log.debug(f"清理过期流程时启动异步关闭服务器失败: {e}")
         
         del auth_flows[state]
     
