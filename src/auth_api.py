@@ -1005,11 +1005,8 @@ auth_tokens = {}  # 存储有效的认证令牌
 
 def verify_password(password: str) -> bool:
     """验证密码"""
-    correct_password = get_config_value('password', 'pwd', 'PASSWORD')
-    if not correct_password:
-        log.warning("PASSWORD环境变量未设置，拒绝访问")
-        return False
-    
+    from config import get_server_password
+    correct_password = get_server_password()
     return password == correct_password
 
 
@@ -1269,7 +1266,8 @@ def auto_load_env_credentials_on_startup() -> None:
     程序启动时自动从环境变量加载凭证
     如果设置了 AUTO_LOAD_ENV_CREDS=true，则会自动执行
     """
-    auto_load = os.getenv('AUTO_LOAD_ENV_CREDS', 'false').lower() in ('true', '1', 'yes', 'on')
+    from config import get_auto_load_env_creds
+    auto_load = get_auto_load_env_creds()
     
     if not auto_load:
         log.debug("AUTO_LOAD_ENV_CREDS未启用，跳过自动加载")

@@ -341,3 +341,37 @@ def get_server_password() -> str:
     Default: pwd
     """
     return str(get_config_value("password", "pwd", "PASSWORD"))
+
+def get_credentials_dir() -> str:
+    """
+    Get credentials directory setting.
+    
+    Environment variable: CREDENTIALS_DIR
+    TOML config key: credentials_dir
+    Default: ./creds
+    """
+    return str(get_config_value("credentials_dir", CREDENTIALS_DIR, "CREDENTIALS_DIR"))
+
+def get_code_assist_endpoint() -> str:
+    """
+    Get Code Assist endpoint setting.
+    
+    Environment variable: CODE_ASSIST_ENDPOINT
+    TOML config key: code_assist_endpoint
+    Default: https://cloudcode-pa.googleapis.com
+    """
+    return str(get_config_value("code_assist_endpoint", CODE_ASSIST_ENDPOINT, "CODE_ASSIST_ENDPOINT"))
+
+def get_auto_load_env_creds() -> bool:
+    """
+    Get auto load environment credentials setting.
+    
+    Environment variable: AUTO_LOAD_ENV_CREDS
+    TOML config key: auto_load_env_creds
+    Default: False
+    """
+    env_value = os.getenv("AUTO_LOAD_ENV_CREDS")
+    if env_value:
+        return env_value.lower() in ("true", "1", "yes", "on")
+    
+    return bool(get_config_value("auto_load_env_creds", False))

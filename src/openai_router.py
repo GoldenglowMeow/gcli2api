@@ -38,7 +38,8 @@ async def get_credential_manager():
 
 def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """验证用户密码"""
-    password = get_config_value("password", "pwd", "PASSWORD")
+    from config import get_server_password
+    password = get_server_password()
     token = credentials.credentials
     if token != password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
