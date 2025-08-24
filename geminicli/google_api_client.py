@@ -156,6 +156,8 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                                                 # 针对非配额耗尽的429错误进行重试
                                                 if credential_manager:
                                                     await credential_manager.increment_call_count()
+                                                    # 检查是否需要轮换凭证
+                                                    await credential_manager._rotate_credential_if_needed()
                                                 await asyncio.sleep(0.05)  # 50ms 延迟间隔
                                                 continue
                                             else:
@@ -240,6 +242,8 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             # 针对非配额耗尽的429错误进行重试，增加调用计数以触发正常的凭证轮换机制
                             if credential_manager:
                                 await credential_manager.increment_call_count()
+                                # 检查是否需要轮换凭证
+                                await credential_manager._rotate_credential_if_needed()
                             await asyncio.sleep(0.05)  # 50ms 延迟间隔
                             continue
                         else:
