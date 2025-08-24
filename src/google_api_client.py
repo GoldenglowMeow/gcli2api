@@ -125,49 +125,68 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                 if proxy:
                     client_kwargs["proxy"] = proxy
                 
-                async with httpx.AsyncClient(**client_kwargs) as client:
-                    async with client.stream(
-                        "POST", target_url, content=final_post_data, headers=headers
-                    ) as resp:
-                        if resp.status_code == 429:
-                            # 记录429错误
-                            current_file = credential_manager.get_current_file_path() if credential_manager else None
-                            if current_file and credential_manager:
-                                response_content = ""
-                                try:
-                                    response_content = await resp.aread()
-                                    if isinstance(response_content, bytes):
-                                        response_content = response_content.decode('utf-8', errors='ignore')
-                                except Exception:
-                                    pass
-                                await credential_manager.record_error(current_file, 429, response_content)
-                            
-                            # 如果重试可用且未达到最大次数，进行重试
-                            if retry_429_enabled and attempt < max_retries:
-                                log.warning(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
-                                if credential_manager:
-                                    await credential_manager.increment_call_count()
-                                    await credential_manager._rotate_credential_if_needed()
-                                    # 重新获取headers（凭证可能已轮换）
-                                    headers, final_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
-                                    final_post_data = json.dumps(final_payload)
-                                await asyncio.sleep(retry_interval)
-                                break  # 跳出内层处理，继续外层循环重试
-                            else:
-                                # 返回429错误流
-                                async def error_stream():
-                                    error_response = {
-                                        "error": {
-                                            "message": "429 rate limit exceeded, max retries reached",
-                                            "type": "api_error",
-                                            "code": 429
-                                        }
-                                    }
-                                    yield f"data: {json.dumps(error_response)}\n\n"
-                                return StreamingResponse(error_stream(), media_type="text/event-stream", status_code=429)
+                # 创建客户端和流响应，但使用自定义的生命周期管理
+                client = httpx.AsyncClient(**client_kwargs)
+                
+                try:
+                    # 使用stream方法但不在async with块中消费数据
+                    stream_ctx = client.stream("POST", target_url, content=final_post_data, headers=headers)
+                    resp = await stream_ctx.__aenter__()
+                    
+                    if resp.status_code == 429:
+                        # 记录429错误
+                        current_file = credential_manager.get_current_file_path() if credential_manager else None
+                        if current_file and credential_manager:
+                            response_content = ""
+                            try:
+                                response_content = await resp.aread()
+                                if isinstance(response_content, bytes):
+                                    response_content = response_content.decode('utf-8', errors='ignore')
+                            except Exception:
+                                pass
+                            await credential_manager.record_error(current_file, 429, response_content)
+                        
+                        # 清理资源
+                        try:
+                            await stream_ctx.__aexit__(None, None, None)
+                        except:
+                            pass
+                        await client.aclose()
+                        
+                        # 如果重试可用且未达到最大次数，进行重试
+                        if retry_429_enabled and attempt < max_retries:
+                            log.warning(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
+                            if credential_manager:
+                                await credential_manager.increment_call_count()
+                                await credential_manager._rotate_credential_if_needed()
+                                # 重新获取headers（凭证可能已轮换）
+                                headers, final_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
+                                final_post_data = json.dumps(final_payload)
+                            await asyncio.sleep(retry_interval)
+                            break  # 跳出内层处理，继续外层循环重试
                         else:
-                            # 成功响应，正常处理
-                            return await _handle_streaming_response(resp, credential_manager)
+                            # 返回429错误流
+                            async def error_stream():
+                                error_response = {
+                                    "error": {
+                                        "message": "429 rate limit exceeded, max retries reached",
+                                        "type": "api_error",
+                                        "code": 429
+                                    }
+                                }
+                                yield f"data: {json.dumps(error_response)}\n\n"
+                            return StreamingResponse(error_stream(), media_type="text/event-stream", status_code=429)
+                    else:
+                        # 成功响应，传递所有资源给流式处理函数管理
+                        return _handle_streaming_response_managed(resp, stream_ctx, client, credential_manager)
+                        
+                except Exception as e:
+                    # 清理资源
+                    try:
+                        await client.aclose()
+                    except:
+                        pass
+                    raise e
 
             else:
                 # 非流式请求处理
@@ -228,6 +247,427 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
     # 如果循环结束仍未成功，返回错误
     return _create_error_response("Max retries exceeded", 429)
 
+
+def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client: httpx.AsyncClient, credential_manager: CredentialManager = None) -> StreamingResponse:
+    """Handle streaming response with complete resource lifecycle management."""
+    
+    # 检查HTTP错误
+    if resp.status_code != 200:
+        # 立即清理资源并返回错误
+        async def cleanup_and_error():
+            try:
+                await stream_ctx.__aexit__(None, None, None)
+            except:
+                pass
+            try:
+                await client.aclose()
+            except:
+                pass
+            
+            # 记录错误
+            current_file = credential_manager.get_current_file_path() if credential_manager else None
+            log.debug(f"[STREAMING] Error handling: status_code={resp.status_code}, current_file={current_file}")
+            
+            # 尝试获取响应内容用于详细错误显示
+            response_content = ""
+            try:
+                response_content = await resp.aread()
+                if isinstance(response_content, bytes):
+                    response_content = response_content.decode('utf-8', errors='ignore')
+            except Exception as e:
+                log.debug(f"[STREAMING] Failed to read response content for error analysis: {e}")
+                response_content = ""
+            
+            # 显示详细错误信息
+            if resp.status_code == 429:
+                if response_content:
+                    log.error(f"[ERROR] Google API returned status 429 (STREAMING). Response details: {response_content[:500]}")
+                else:
+                    log.error(f"[ERROR] Google API returned status 429 (STREAMING)")
+            else:
+                if response_content:
+                    log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING). Response details: {response_content[:500]}")
+                else:
+                    log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING)")
+            
+            if credential_manager:
+                if current_file:
+                    log.debug(f"[STREAMING] Calling record_error for file {current_file} with status_code {resp.status_code}")
+                    log.debug(f"[STREAMING] Response content snippet: {response_content[:200]}...")
+                    await credential_manager.record_error(current_file, resp.status_code, response_content)
+                else:
+                    log.warning(f"[STREAMING] No current file path available for recording error {resp.status_code}")
+            
+            await _handle_api_error(credential_manager, resp.status_code, response_content)
+            
+            error_response = {
+                "error": {
+                    "message": f"API error: {resp.status_code}",
+                    "type": "api_error",
+                    "code": resp.status_code
+                }
+            }
+            yield f'data: {json.dumps(error_response)}\n\n'.encode('utf-8')
+        
+        return StreamingResponse(
+            cleanup_and_error(),
+            media_type="text/event-stream",
+            status_code=resp.status_code
+        )
+    
+    # 正常流式响应处理，确保资源在流结束时被清理
+    async def managed_stream_generator():
+        success_recorded = False
+        try:
+            async for chunk in resp.aiter_lines():
+                if not chunk or not chunk.startswith('data: '):
+                    continue
+                    
+                # 记录第一次成功响应
+                if not success_recorded:
+                    current_file = credential_manager.get_current_file_path() if credential_manager else None
+                    if current_file and credential_manager:
+                        await credential_manager.record_success(current_file, "chat_content")
+                    success_recorded = True
+                
+                payload = chunk[len('data: '):]
+                try:
+                    obj = json.loads(payload)
+                    if "response" in obj:
+                        data = obj["response"]
+                        yield f"data: {json.dumps(data, separators=(',',':'))}\n\n".encode()
+                        await asyncio.sleep(0)  # 让其他协程有机会运行
+                    else:
+                        yield f"data: {json.dumps(obj, separators=(',',':'))}\n\n".encode()
+                except json.JSONDecodeError:
+                    continue
+                    
+        except Exception as e:
+            log.error(f"Streaming error: {e}")
+            err = {"error": {"message": str(e), "type": "api_error", "code": 500}}
+            yield f"data: {json.dumps(err)}\n\n".encode()
+        finally:
+            # 确保清理所有资源
+            try:
+                await stream_ctx.__aexit__(None, None, None)
+            except Exception as e:
+                log.debug(f"Error closing stream context: {e}")
+            try:
+                await client.aclose()
+            except Exception as e:
+                log.debug(f"Error closing client: {e}")
+
+    return StreamingResponse(
+        managed_stream_generator(),
+        media_type="text/event-stream"
+    )
+
+async def _handle_streaming_response_robust(resp: httpx.Response, credential_manager: CredentialManager = None) -> StreamingResponse:
+    """Handle streaming response with improved error handling for connection issues."""
+    
+    # 检查HTTP错误
+    if resp.status_code != 200:
+        # 记录错误并检查是否是 429 错误（配额用完），立即切换凭据
+        current_file = credential_manager.get_current_file_path() if credential_manager else None
+        log.debug(f"[STREAMING] Error handling: status_code={resp.status_code}, current_file={current_file}")
+        
+        # 尝试获取响应内容用于详细错误显示
+        response_content = ""
+        try:
+            response_content = await resp.aread()
+            if isinstance(response_content, bytes):
+                response_content = response_content.decode('utf-8', errors='ignore')
+        except Exception as e:
+            log.debug(f"[STREAMING] Failed to read response content for error analysis: {e}")
+            response_content = ""
+        
+        # 显示详细错误信息
+        if resp.status_code == 429:
+            if response_content:
+                log.error(f"[ERROR] Google API returned status 429 (STREAMING). Response details: {response_content[:500]}")
+            else:
+                log.error(f"[ERROR] Google API returned status 429 (STREAMING)")
+        else:
+            if response_content:
+                log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING). Response details: {response_content[:500]}")
+            else:
+                log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING)")
+        
+        if credential_manager:
+            if current_file:
+                log.debug(f"[STREAMING] Calling record_error for file {current_file} with status_code {resp.status_code}")
+                log.debug(f"[STREAMING] Response content snippet: {response_content[:200]}...")
+                await credential_manager.record_error(current_file, resp.status_code, response_content)
+            else:
+                log.warning(f"[STREAMING] No current file path available for recording error {resp.status_code}")
+        
+        await _handle_api_error(credential_manager, resp.status_code, response_content)
+        
+        # 返回错误流
+        async def error_generator():
+            error_response = {
+                "error": {
+                    "message": f"API error: {resp.status_code}",
+                    "type": "api_error",
+                    "code": resp.status_code
+                }
+            }
+            yield f'data: {json.dumps(error_response)}\n\n'.encode('utf-8')
+        
+        return StreamingResponse(
+            error_generator(),
+            media_type="text/event-stream",
+            status_code=resp.status_code
+        )
+    
+    # 真正的流式处理，逐块读取和输出
+    async def stream_generator():
+        success_recorded = False
+        try:
+            async for chunk in resp.aiter_lines():
+                if not chunk or not chunk.startswith('data: '):
+                    continue
+                    
+                # 记录第一次成功响应
+                if not success_recorded:
+                    current_file = credential_manager.get_current_file_path() if credential_manager else None
+                    if current_file and credential_manager:
+                        await credential_manager.record_success(current_file, "chat_content")
+                    success_recorded = True
+                
+                payload = chunk[len('data: '):]
+                try:
+                    obj = json.loads(payload)
+                    if "response" in obj:
+                        data = obj["response"]
+                        yield f"data: {json.dumps(data, separators=(',',':'))}\n\n".encode()
+                        await asyncio.sleep(0)  # 让其他协程有机会运行
+                    else:
+                        yield f"data: {json.dumps(obj, separators=(',',':'))}\n\n".encode()
+                except json.JSONDecodeError:
+                    continue
+                    
+        except Exception as e:
+            # 处理连接关闭或其他错误，但不崩溃
+            if "stream has been closed" in str(e) or "Connection closed" in str(e) or "ResponseClosed" in str(e):
+                log.warning(f"Stream connection closed during reading, ending stream gracefully: {e}")
+                # 流正常结束，不发送错误消息
+                return
+            else:
+                log.error(f"Streaming error: {e}")
+                err = {"error": {"message": str(e), "type": "api_error", "code": 500}}
+                yield f"data: {json.dumps(err)}\n\n".encode()
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream"
+    )
+
+async def _handle_streaming_response_with_client(resp: httpx.Response, client: httpx.AsyncClient, credential_manager: CredentialManager = None) -> StreamingResponse:
+    """Handle streaming response with client lifecycle management."""
+    
+    # 检查HTTP错误
+    if resp.status_code != 200:
+        # 关闭客户端
+        await client.aclose()
+        
+        # 记录错误并检查是否是 429 错误（配额用完），立即切换凭据
+        current_file = credential_manager.get_current_file_path() if credential_manager else None
+        log.debug(f"[STREAMING] Error handling: status_code={resp.status_code}, current_file={current_file}")
+        
+        # 尝试获取响应内容用于详细错误显示
+        response_content = ""
+        try:
+            response_content = await resp.aread()
+            if isinstance(response_content, bytes):
+                response_content = response_content.decode('utf-8', errors='ignore')
+        except Exception as e:
+            log.debug(f"[STREAMING] Failed to read response content for error analysis: {e}")
+            response_content = ""
+        
+        # 显示详细错误信息
+        if resp.status_code == 429:
+            if response_content:
+                log.error(f"[ERROR] Google API returned status 429 (STREAMING). Response details: {response_content[:500]}")
+            else:
+                log.error(f"[ERROR] Google API returned status 429 (STREAMING)")
+        else:
+            if response_content:
+                log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING). Response details: {response_content[:500]}")
+            else:
+                log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING)")
+        
+        if credential_manager:
+            if current_file:
+                log.debug(f"[STREAMING] Calling record_error for file {current_file} with status_code {resp.status_code}")
+                log.debug(f"[STREAMING] Response content snippet: {response_content[:200]}...")
+                await credential_manager.record_error(current_file, resp.status_code, response_content)
+            else:
+                log.warning(f"[STREAMING] No current file path available for recording error {resp.status_code}")
+        
+        await _handle_api_error(credential_manager, resp.status_code, response_content)
+        
+        # 返回错误流
+        async def error_generator():
+            error_response = {
+                "error": {
+                    "message": f"API error: {resp.status_code}",
+                    "type": "api_error",
+                    "code": resp.status_code
+                }
+            }
+            yield f'data: {json.dumps(error_response)}\n\n'.encode('utf-8')
+        
+        return StreamingResponse(
+            error_generator(),
+            media_type="text/event-stream",
+            status_code=resp.status_code
+        )
+    
+    # 正常流式响应处理
+    async def stream_generator():
+        success_recorded = False
+        try:
+            async for chunk in resp.aiter_lines():
+                if not chunk or not chunk.startswith('data: '):
+                    continue
+                    
+                # 记录第一次成功响应
+                if not success_recorded:
+                    current_file = credential_manager.get_current_file_path() if credential_manager else None
+                    if current_file and credential_manager:
+                        await credential_manager.record_success(current_file, "chat_content")
+                    success_recorded = True
+                
+                payload = chunk[len('data: '):]
+                try:
+                    obj = json.loads(payload)
+                    if "response" in obj:
+                        data = obj["response"]
+                        yield f"data: {json.dumps(data, separators=(',',':'))}\n\n".encode()
+                        await asyncio.sleep(0)
+                    else:
+                        yield f"data: {json.dumps(obj, separators=(',',':'))}\n\n".encode()
+                except json.JSONDecodeError:
+                    continue
+        except Exception as e:
+            log.error(f"Streaming error: {e}")
+            err = {"error": {"message": str(e), "type": "api_error", "code": 500}}
+            yield f"data: {json.dumps(err)}\n\n".encode()
+        finally:
+            # 确保在生成器结束时关闭客户端
+            try:
+                await client.aclose()
+            except Exception as e:
+                log.debug(f"Error closing client: {e}")
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream"
+    )
+
+async def _handle_streaming_response_preread(resp: httpx.Response, credential_manager: CredentialManager = None) -> StreamingResponse:
+    """Handle streaming response by pre-reading all data to avoid closed stream errors."""
+    
+    # 检查HTTP错误
+    if resp.status_code != 200:
+        # 记录错误并检查是否是 429 错误（配额用完），立即切换凭据
+        current_file = credential_manager.get_current_file_path() if credential_manager else None
+        log.debug(f"[STREAMING] Error handling: status_code={resp.status_code}, current_file={current_file}")
+        
+        # 尝试获取响应内容用于详细错误显示
+        response_content = ""
+        try:
+            response_content = await resp.aread()
+            if isinstance(response_content, bytes):
+                response_content = response_content.decode('utf-8', errors='ignore')
+        except Exception as e:
+            log.debug(f"[STREAMING] Failed to read response content for error analysis: {e}")
+            response_content = ""
+        
+        # 显示详细错误信息
+        if resp.status_code == 429:
+            if response_content:
+                log.error(f"[ERROR] Google API returned status 429 (STREAMING). Response details: {response_content[:500]}")
+            else:
+                log.error(f"[ERROR] Google API returned status 429 (STREAMING)")
+        else:
+            if response_content:
+                log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING). Response details: {response_content[:500]}")
+            else:
+                log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING)")
+        
+        if credential_manager:
+            if current_file:
+                log.debug(f"[STREAMING] Calling record_error for file {current_file} with status_code {resp.status_code}")
+                log.debug(f"[STREAMING] Response content snippet: {response_content[:200]}...")
+                await credential_manager.record_error(current_file, resp.status_code, response_content)
+            else:
+                log.warning(f"[STREAMING] No current file path available for recording error {resp.status_code}")
+        
+        await _handle_api_error(credential_manager, resp.status_code, response_content)
+        
+        # 返回错误流
+        async def error_generator():
+            error_response = {
+                "error": {
+                    "message": f"API error: {resp.status_code}",
+                    "type": "api_error",
+                    "code": resp.status_code
+                }
+            }
+            yield f'data: {json.dumps(error_response)}\n\n'.encode('utf-8')
+        
+        return StreamingResponse(
+            error_generator(),
+            media_type="text/event-stream",
+            status_code=resp.status_code
+        )
+    
+    # 预读取所有流数据
+    stream_data = []
+    success_recorded = False
+    try:
+        async for chunk in resp.aiter_lines():
+            if not chunk or not chunk.startswith('data: '):
+                continue
+                
+            # 记录第一次成功响应
+            if not success_recorded:
+                current_file = credential_manager.get_current_file_path() if credential_manager else None
+                if current_file and credential_manager:
+                    await credential_manager.record_success(current_file, "chat_content")
+                success_recorded = True
+            
+            payload = chunk[len('data: '):]
+            try:
+                obj = json.loads(payload)
+                if "response" in obj:
+                    data = obj["response"]
+                    stream_data.append(f"data: {json.dumps(data, separators=(',',':'))}\n\n".encode())
+                else:
+                    stream_data.append(f"data: {json.dumps(obj, separators=(',',':'))}\n\n".encode())
+            except json.JSONDecodeError:
+                continue
+    except Exception as e:
+        log.error(f"Streaming pre-read error: {e}")
+        err = {"error": {"message": str(e), "type": "api_error", "code": 500}}
+        stream_data.append(f"data: {json.dumps(err)}\n\n".encode())
+
+    async def cached_stream_generator():
+        try:
+            for chunk in stream_data:
+                yield chunk
+                await asyncio.sleep(0)  # Allow other coroutines to run
+        except Exception as e:
+            log.error(f"Cached streaming error: {e}")
+            err = {"error": {"message": str(e), "type": "api_error", "code": 500}}
+            yield f"data: {json.dumps(err)}\n\n".encode()
+
+    return StreamingResponse(
+        cached_stream_generator(),
+        media_type="text/event-stream"
+    )
 
 async def _handle_streaming_response(resp: httpx.Response, credential_manager: CredentialManager = None) -> StreamingResponse:
     """Handle streaming response from Google API."""
