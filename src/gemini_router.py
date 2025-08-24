@@ -5,7 +5,7 @@ Gemini Router - Handles native Gemini format API requests
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, HTTPException, Depends, Request, Path, status, Header
+from fastapi import APIRouter, HTTPException, Depends, Request, Path, Query, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional
@@ -42,15 +42,40 @@ def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
     return token
 
-def authenticate_gemini_api_key(x_goog_api_key: Optional[str] = Header(None)) -> str:
-    """验证Gemini API Key（x-goog-api-key头部方式）"""
-    if not x_goog_api_key:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing x-goog-api-key header")
-    
+def authenticate_gemini_flexible(
+    request: Request,
+    x_goog_api_key: Optional[str] = Header(None, alias="x-goog-api-key"),
+    key: Optional[str] = Query(None),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(lambda: None)
+) -> str:
+    """灵活验证：支持x-goog-api-key头部、URL参数key或Authorization Bearer"""
     password = get_config_value("password", "pwd", "PASSWORD")
-    if x_goog_api_key != password:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key")
-    return x_goog_api_key
+    
+    # 尝试从URL参数key获取（Google官方标准方式）
+    if key:
+        log.debug(f"Using URL parameter key authentication")
+        if key == password:
+            return key
+    
+    # 尝试从Authorization头获取（兼容旧方式）
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:]  # 移除 "Bearer " 前缀
+        log.debug(f"Using Bearer token authentication")
+        if token == password:
+            return token
+    
+    # 尝试从x-goog-api-key头获取（新标准方式）
+    if x_goog_api_key:
+        log.debug(f"Using x-goog-api-key authentication")
+        if x_goog_api_key == password:
+            return x_goog_api_key
+    
+    log.error(f"Authentication failed. Headers: {dict(request.headers)}, Query params: key={key}")
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST, 
+        detail="Missing or invalid authentication. Use 'key' URL parameter, 'x-goog-api-key' header, or 'Authorization: Bearer <token>'"
+    )
 
 @router.get("/v1beta/models")
 @router.get("/v1/models")
@@ -89,7 +114,7 @@ async def list_gemini_models():
 async def generate_content(
     model: str = Path(..., description="Model name"),
     request: Request = None,
-    api_key: str = Depends(authenticate_gemini_api_key)
+    api_key: str = Depends(authenticate_gemini_flexible)
 ):
     """处理Gemini格式的内容生成请求（非流式）"""
     
@@ -180,9 +205,12 @@ async def generate_content(
 async def stream_generate_content(
     model: str = Path(..., description="Model name"),
     request: Request = None,
-    api_key: str = Depends(authenticate_gemini_api_key)
+    api_key: str = Depends(authenticate_gemini_flexible)
 ):
     """处理Gemini格式的流式内容生成请求"""
+    log.info(f"Stream request received for model: {model}")
+    log.info(f"Request headers: {dict(request.headers)}")
+    log.info(f"API key received: {api_key[:10] if api_key else None}...")
     
     # 获取原始请求数据
     try:
@@ -251,7 +279,7 @@ async def stream_generate_content(
 @router.get("/v1/models/{model}")
 async def get_model_info(
     model: str = Path(..., description="Model name"),
-    api_key: str = Depends(authenticate_gemini_api_key)
+    api_key: str = Depends(authenticate_gemini_flexible)
 ):
     """获取特定模型的信息"""
     
