@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Union, Dict, Any
-from enum import Enum
 
 # Common Models
 class Model(BaseModel):

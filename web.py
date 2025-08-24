@@ -106,7 +106,6 @@ async def root():
     """根路径 - 服务状态信息"""
     return {
         "service": "GCLI2API",
-        "version": "2.0.0",
         "status": "running",
         "endpoints": {
             "openai_api": "/v1/chat/completions",

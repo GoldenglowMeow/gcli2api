@@ -3,8 +3,6 @@ Gemini Router - Handles native Gemini format API requests
 处理原生Gemini格式请求的路由模块
 """
 import json
-import time
-import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Path, status

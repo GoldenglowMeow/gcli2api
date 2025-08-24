@@ -1351,7 +1351,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                     document.getElementById('connectionStatusText').textContent = '已连接';
                     document.getElementById('logConnectionStatus').className = 'status success';
                     showStatus('日志流连接成功', 'success');
-                    clearLogs(); // 清空旧日志
+                    clearLogsDisplay(); // 只清空前端显示的旧日志，不清空服务器文件
                 };
                 
                 logWebSocket.onmessage = function(event) {
@@ -1403,6 +1403,13 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             }
         }
 
+        function clearLogsDisplay() {
+            // 只清空前端显示的日志，不清空服务器文件
+            allLogs = [];
+            filteredLogs = [];
+            document.getElementById('logContent').textContent = '日志已清空，等待新日志...';
+        }
+
         async function clearLogs() {
             try {
                 // 调用后端API清空日志文件
@@ -1415,9 +1422,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 
                 if (response.ok) {
                     // 清空前端显示的日志
-                    allLogs = [];
-                    filteredLogs = [];
-                    document.getElementById('logContent').textContent = '日志已清空，等待新日志...';
+                    clearLogsDisplay();
                     showStatus(data.message, 'success');
                 } else {
                     showStatus(`清空日志失败: ${data.detail || data.error || '未知错误'}`, 'error');
@@ -1425,9 +1430,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             } catch (error) {
                 console.error('clearLogs error:', error);
                 // 即使后端清空失败，也清空前端显示
-                allLogs = [];
-                filteredLogs = [];
-                document.getElementById('logContent').textContent = '日志已清空，等待新日志...';
+                clearLogsDisplay();
                 showStatus(`清空日志时网络错误: ${error.message}`, 'error');
             }
         }
