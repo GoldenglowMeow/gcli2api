@@ -674,7 +674,7 @@ async def _handle_streaming_response(resp: httpx.Response, credential_manager: C
     
     # 检查HTTP错误
     if resp.status_code != 200:
-        # 记录错误并检查是否是 429 错误（配额用完），立即切换凭据
+        # 记录错误并检查是否是 429 错误，立即切换凭据
         current_file = credential_manager.get_current_file_path() if credential_manager else None
         log.debug(f"[STREAMING] Error handling: status_code={resp.status_code}, current_file={current_file}")
         
