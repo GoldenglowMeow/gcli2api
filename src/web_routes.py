@@ -532,6 +532,28 @@ async def get_config(token: str = Depends(verify_token)):
         else:
             current_config.setdefault("anti_truncation_max_attempts", 3)
         
+        # 服务器配置
+        if os.getenv("HOST"):
+            current_config["host"] = os.getenv("HOST")
+            env_locked.append("host")
+        else:
+            current_config.setdefault("host", "0.0.0.0")
+        
+        if os.getenv("PORT"):
+            try:
+                current_config["port"] = int(os.getenv("PORT"))
+                env_locked.append("port")
+            except ValueError:
+                current_config.setdefault("port", 7861)
+        else:
+            current_config.setdefault("port", 7861)
+        
+        if os.getenv("PASSWORD"):
+            current_config["password"] = os.getenv("PASSWORD")
+            env_locked.append("password")
+        else:
+            current_config.setdefault("password", "pwd")
+        
         return JSONResponse(content={
             "config": current_config,
             "env_locked": env_locked
@@ -592,6 +614,19 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             if not isinstance(new_config["anti_truncation_max_attempts"], int) or new_config["anti_truncation_max_attempts"] < 1 or new_config["anti_truncation_max_attempts"] > 10:
                 raise HTTPException(status_code=400, detail="抗截断最大重试次数必须是1-10之间的整数")
         
+        # 验证服务器配置
+        if "host" in new_config:
+            if not isinstance(new_config["host"], str) or not new_config["host"].strip():
+                raise HTTPException(status_code=400, detail="服务器主机地址不能为空")
+        
+        if "port" in new_config:
+            if not isinstance(new_config["port"], int) or new_config["port"] < 1 or new_config["port"] > 65535:
+                raise HTTPException(status_code=400, detail="端口号必须是1-65535之间的整数")
+        
+        if "password" in new_config:
+            if not isinstance(new_config["password"], str):
+                raise HTTPException(status_code=400, detail="访问密码必须是字符串")
+        
         # 读取现有的配置文件
         config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
         existing_config = {}
@@ -625,6 +660,12 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             env_locked_keys.add("log_file")
         if os.getenv("ANTI_TRUNCATION_MAX_ATTEMPTS"):
             env_locked_keys.add("anti_truncation_max_attempts")
+        if os.getenv("HOST"):
+            env_locked_keys.add("host")
+        if os.getenv("PORT"):
+            env_locked_keys.add("port")
+        if os.getenv("PASSWORD"):
+            env_locked_keys.add("password")
         
         for key, value in new_config.items():
             if key not in env_locked_keys:

@@ -757,6 +757,28 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                     <div class="loading" id="configLoading">正在加载配置...</div>
                     <div id="configForm" class="hidden">
                         <div class="config-group">
+                            <h4>服务器配置</h4>
+                            
+                            <div class="form-group">
+                                <label for="host">服务器主机地址:</label>
+                                <input type="text" id="host" class="config-input" placeholder="例如: 0.0.0.0, 127.0.0.1" />
+                                <small class="config-note">服务器监听的主机地址，0.0.0.0表示监听所有接口</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="port">服务器端口:</label>
+                                <input type="number" id="port" class="config-input" min="1" max="65535" placeholder="7861" />
+                                <small class="config-note">服务器监听的端口号，修改后需要重启服务器</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="password">访问密码:</label>
+                                <input type="text" id="password" class="config-input" placeholder="pwd" />
+                                <small class="config-note">API访问密码，用于认证和权限控制</small>
+                            </div>
+                        </div>
+                        
+                        <div class="config-group">
                             <h4>基础配置</h4>
                             
                             <div class="form-group">
@@ -1910,6 +1932,11 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         }
 
         function populateConfigForm() {
+            // 服务器配置
+            setConfigField('host', currentConfig.host || '0.0.0.0');
+            setConfigField('port', currentConfig.port || 7861);
+            setConfigField('password', currentConfig.password || 'pwd');
+            
             // 基础配置
             setConfigField('codeAssistEndpoint', currentConfig.code_assist_endpoint || '');
             setConfigField('credentialsDir', currentConfig.credentials_dir || '');
@@ -1957,6 +1984,9 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         async function saveConfig() {
             try {
                 const config = {
+                    host: document.getElementById('host').value.trim(),
+                    port: parseInt(document.getElementById('port').value) || 7861,
+                    password: document.getElementById('password').value.trim(),
                     code_assist_endpoint: document.getElementById('codeAssistEndpoint').value.trim(),
                     credentials_dir: document.getElementById('credentialsDir').value.trim(),
                     proxy: document.getElementById('proxy').value.trim(),

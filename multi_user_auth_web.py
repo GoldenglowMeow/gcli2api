@@ -213,46 +213,6 @@ async def lifespan(app: FastAPI):
 # 注册 lifespan 处理器
 app.router.lifespan_context = lifespan
 
-def get_available_port(start_port: int = 8000) -> int:
-    """获取可用端口"""
-    import socket
-    
-    for port in range(start_port, start_port + 100):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('localhost', port))
-                return port
-        except OSError:
-            continue
-    
-    return start_port  # 如果都被占用，返回起始端口
-
-
-def main():
-    """主函数"""
-    print("启动 Google OAuth 认证服务...")
-    
-    # 解析命令行参数
-    import argparse
-    parser = argparse.ArgumentParser(description='Google OAuth 认证服务')
-    parser.add_argument('--host', default='localhost', help='服务器主机地址')
-    parser.add_argument('--port', type=int, default=8000, help='服务器端口')
-    parser.add_argument('--auto-port', action='store_true', help='自动寻找可用端口')
-    parser.add_argument('--log-level', default='info', 
-                       choices=['debug', 'info', 'warning', 'error'],
-                       help='日志级别')
-    
-    args = parser.parse_args()
-    
-    # 自动寻找可用端口
-    if args.auto_port:
-        args.port = get_available_port(args.port)
-        print(f"使用端口: {args.port}")
-    
-    # 保留原有 main 定义以兼容，但 __main__ 中改用 hypercorn 直接启动
-    return True
-
-
 if __name__ == "__main__":
     from hypercorn.asyncio import serve
     from hypercorn.config import Config

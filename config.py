@@ -303,3 +303,41 @@ def get_anti_truncation_max_attempts() -> int:
             pass
     
     return int(get_config_value("anti_truncation_max_attempts", 3))
+
+# Server Configuration
+def get_server_host() -> str:
+    """
+    Get server host setting.
+    
+    Environment variable: HOST
+    TOML config key: host
+    Default: 0.0.0.0
+    """
+    return str(get_config_value("host", "0.0.0.0", "HOST"))
+
+def get_server_port() -> int:
+    """
+    Get server port setting.
+    
+    Environment variable: PORT
+    TOML config key: port
+    Default: 7861
+    """
+    env_value = os.getenv("PORT")
+    if env_value:
+        try:
+            return int(env_value)
+        except ValueError:
+            pass
+    
+    return int(get_config_value("port", 7861))
+
+def get_server_password() -> str:
+    """
+    Get server password setting.
+    
+    Environment variable: PASSWORD
+    TOML config key: password
+    Default: pwd
+    """
+    return str(get_config_value("password", "pwd", "PASSWORD"))

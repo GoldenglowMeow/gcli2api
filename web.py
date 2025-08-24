@@ -7,7 +7,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config import get_config_value
 
 # Import all routers
 from src.openai_router import router as openai_router
@@ -16,7 +15,7 @@ from src.web_routes import router as web_router
 
 # Import managers and utilities
 from src.credential_manager import CredentialManager
-from config import get_config_value
+from config import get_server_host, get_server_port
 from log import log
 
 # 全局凭证管理器
@@ -123,9 +122,9 @@ if __name__ == "__main__":
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
     
-    # 从环境变量或配置获取端口
-    port = int(get_config_value("port", "7861", "PORT"))
-    host = get_config_value("host", "0.0.0.0", "HOST")
+    # 从环境变量或配置获取端口和主机
+    port = get_server_port()
+    host = get_server_host()
     
     log.info("=" * 60)
     log.info("🚀 启动 GCLI2API 2.0 - 模块化架构")
