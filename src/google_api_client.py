@@ -102,165 +102,131 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
     max_retries = get_retry_429_max_retries()
     retry_429_enabled = get_retry_429_enabled()
     retry_interval = get_retry_429_interval()
-    retry_count = 0
     
-    while retry_count <= max_retries:
-        # 确定API端点
-        action = "streamGenerateContent" if is_streaming else "generateContent"
-        target_url = f"{CODE_ASSIST_ENDPOINT}/v1internal:{action}"
-        if is_streaming:
-            target_url += "?alt=sse"
+    # 确定API端点
+    action = "streamGenerateContent" if is_streaming else "generateContent"
+    target_url = f"{CODE_ASSIST_ENDPOINT}/v1internal:{action}"
+    if is_streaming:
+        target_url += "?alt=sse"
 
+    try:
+        headers, final_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
+    except Exception as e:
+        return _create_error_response(str(e), 500)
+
+    final_post_data = json.dumps(final_payload)
+    proxy = get_proxy_config()
+
+    for attempt in range(max_retries + 1):
         try:
-            proxy = get_proxy_config()
-            
             if is_streaming:
-                # 流式请求：在生成器里打开 AsyncClient 和 client.stream，确保整个流式周期中 client 不被关闭
-                async def event_stream():
-                    nonlocal retry_count
-                    while retry_count <= max_retries:
-                        try:
-                            # 重新获取headers和payload（可能因为凭证切换而改变）
-                            current_headers, current_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
-                            current_post_data = json.dumps(current_payload)
+                # 流式请求处理
+                client_kwargs = {"timeout": None}
+                if proxy:
+                    client_kwargs["proxy"] = proxy
+                
+                async with httpx.AsyncClient(**client_kwargs) as client:
+                    async with client.stream(
+                        "POST", target_url, content=final_post_data, headers=headers
+                    ) as resp:
+                        if resp.status_code == 429:
+                            # 记录429错误
+                            current_file = credential_manager.get_current_file_path() if credential_manager else None
+                            if current_file and credential_manager:
+                                response_content = ""
+                                try:
+                                    response_content = await resp.aread()
+                                    if isinstance(response_content, bytes):
+                                        response_content = response_content.decode('utf-8', errors='ignore')
+                                except Exception:
+                                    pass
+                                await credential_manager.record_error(current_file, 429, response_content)
                             
-                            client_kwargs = {"timeout": None}
-                            if proxy:
-                                client_kwargs["proxy"] = proxy
-                            async with httpx.AsyncClient(**client_kwargs) as client:
-                                async with client.stream(
-                                    "POST", target_url, content=current_post_data, headers=current_headers
-                                ) as resp:
-                                    if resp.status_code == 429:
-                                        # 处理429错误，记录错误并切换凭证
-                                        current_file = credential_manager.get_current_file_path() if credential_manager else None
-                                        if current_file and credential_manager:
-                                            response_content = ""
-                                            try:
-                                                response_content = await resp.aread()
-                                                if isinstance(response_content, bytes):
-                                                    response_content = response_content.decode('utf-8', errors='ignore')
-                                            except Exception:
-                                                pass
-                                            await credential_manager.record_error(current_file, 429, response_content)
-                                        
-                                        if retry_429_enabled:
-                                            retry_count += 1
-                                            if retry_count <= max_retries:
-                                                log.warning(f"[RETRY] 429 error encountered, retrying ({retry_count}/{max_retries})")
-                                                # 针对429错误进行重试
-                                                if credential_manager:
-                                                    await credential_manager.increment_call_count()
-                                                    # 检查是否需要轮换凭证
-                                                    await credential_manager._rotate_credential_if_needed()
-                                                    # 更新current_file以获取轮换后的凭证文件名
-                                                    current_file = credential_manager.get_current_file_path()
-                                                await asyncio.sleep(retry_interval)
-                                                continue
-                                            else:
-                                                log.error(f"[RETRY] Max retries ({max_retries}) exceeded for 429 error")
-                                        else:
-                                            log.warning("[RETRY] 429 error encountered, but retry is disabled")
-                                            # 返回错误流
-                                            error_response = {
-                                                "error": {
-                                                    "message": "Max retries reached for 429 error.",
-                                                    "type": "api_error",
-                                                    "code": 429
-                                                }
-                                            }
-                                            yield f"data: {json.dumps(error_response)}\n\n"
-                                            return
-                                    else:
-                                        # 非429错误或成功响应，正常处理
-                                        sse_resp = await _handle_streaming_response(resp, credential_manager)
-                                        async for chunk in sse_resp.body_iterator:
-                                            yield chunk
-                                        return
-                        except Exception as e:
-                            log.error(f"Streaming request failed: {str(e)}")
-                            error_response = {
-                                "error": {
-                                    "message": f"Request failed: {str(e)}",
-                                    "type": "api_error",
-                                    "code": 500
-                                }
-                            }
-                            yield f"data: {json.dumps(error_response)}\n\n"
-                            return
-                    
-                    # 如果循环结束仍未成功
-                    error_response = {
-                        "error": {
-                            "message": "Max retries exceeded",
-                            "type": "api_error", 
-                            "code": 429
-                        }
-                    }
-                    yield f"data: {json.dumps(error_response)}\n\n"
-                
-                return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-            # 非流式请求保持原逻辑
-            # 重新获取headers和payload（可能因为凭证切换而改变）
-            current_headers, current_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
-            current_post_data = json.dumps(current_payload)
-            
-            client_kwargs = {"timeout": None}
-            if proxy:
-                client_kwargs["proxy"] = proxy
-            async with httpx.AsyncClient(**client_kwargs) as client:
-                resp = await client.post(
-                    target_url, content=current_post_data, headers=current_headers
-                )
-                
-                if resp.status_code == 429:
-                    # 处理429错误，记录错误并切换凭证
-                    current_file = credential_manager.get_current_file_path() if credential_manager else None
-                    if current_file and credential_manager:
-                        response_content = ""
-                        try:
-                            if hasattr(resp, 'content'):
-                                response_content = resp.content
-                                if isinstance(response_content, bytes):
-                                    response_content = response_content.decode('utf-8', errors='ignore')
+                            # 如果重试可用且未达到最大次数，进行重试
+                            if retry_429_enabled and attempt < max_retries:
+                                log.warning(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
+                                if credential_manager:
+                                    await credential_manager.increment_call_count()
+                                    await credential_manager._rotate_credential_if_needed()
+                                    # 重新获取headers（凭证可能已轮换）
+                                    headers, final_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
+                                    final_post_data = json.dumps(final_payload)
+                                await asyncio.sleep(retry_interval)
+                                break  # 跳出内层处理，继续外层循环重试
                             else:
-                                response_content = await resp.aread()
-                                if isinstance(response_content, bytes):
-                                    response_content = response_content.decode('utf-8', errors='ignore')
-                        except Exception:
-                            pass
-                        await credential_manager.record_error(current_file, 429, response_content)
+                                # 返回429错误流
+                                async def error_stream():
+                                    error_response = {
+                                        "error": {
+                                            "message": "429 rate limit exceeded, max retries reached",
+                                            "type": "api_error",
+                                            "code": 429
+                                        }
+                                    }
+                                    yield f"data: {json.dumps(error_response)}\n\n"
+                                return StreamingResponse(error_stream(), media_type="text/event-stream", status_code=429)
+                        else:
+                            # 成功响应，正常处理
+                            return await _handle_streaming_response(resp, credential_manager)
+
+            else:
+                # 非流式请求处理
+                client_kwargs = {"timeout": None}
+                if proxy:
+                    client_kwargs["proxy"] = proxy
+                
+                async with httpx.AsyncClient(**client_kwargs) as client:
+                    resp = await client.post(
+                        target_url, content=final_post_data, headers=headers
+                    )
                     
-                    if retry_429_enabled:
-                        retry_count += 1
-                        if retry_count <= max_retries:
-                            log.warning(f"[RETRY] 429 error encountered, retrying ({retry_count}/{max_retries})")
-                            # 针对429错误进行重试，增加调用计数以触发正常的凭证轮换机制
+                    if resp.status_code == 429:
+                        # 记录429错误
+                        current_file = credential_manager.get_current_file_path() if credential_manager else None
+                        if current_file and credential_manager:
+                            response_content = ""
+                            try:
+                                if hasattr(resp, 'content'):
+                                    response_content = resp.content
+                                    if isinstance(response_content, bytes):
+                                        response_content = response_content.decode('utf-8', errors='ignore')
+                                else:
+                                    response_content = await resp.aread()
+                                    if isinstance(response_content, bytes):
+                                        response_content = response_content.decode('utf-8', errors='ignore')
+                            except Exception:
+                                pass
+                            await credential_manager.record_error(current_file, 429, response_content)
+                        
+                        # 如果重试可用且未达到最大次数，继续重试
+                        if retry_429_enabled and attempt < max_retries:
+                            log.warning(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
                             if credential_manager:
                                 await credential_manager.increment_call_count()
-                                # 检查是否需要轮换凭证
                                 await credential_manager._rotate_credential_if_needed()
-                                # 更新current_file以获取轮换后的凭证文件名
-                                current_file = credential_manager.get_current_file_path()
+                                # 重新获取headers（凭证可能已轮换）
+                                headers, final_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
+                                final_post_data = json.dumps(final_payload)
                             await asyncio.sleep(retry_interval)
                             continue
                         else:
-                            log.error(f"[RETRY] Max retries ({max_retries}) exceeded for 429 error")
+                            log.error(f"[RETRY] Max retries exceeded for 429 error")
                             return _create_error_response("429 rate limit exceeded, max retries reached", 429)
                     else:
-                        log.warning("[RETRY] 429 error encountered, but retry is disabled")
-                        return _create_error_response("429 rate limit exceeded, retry disabled", 429)
-                else:
-                    # 非429错误或成功响应，正常处理
-                    return await _handle_non_streaming_response(resp, credential_manager)
+                        # 非429错误或成功响应，正常处理
+                        return await _handle_non_streaming_response(resp, credential_manager)
                     
         except Exception as e:
-            log.error(f"Request to Google API failed: {str(e)}")
-            return _create_error_response(f"Request failed: {str(e)}")
+            if attempt < max_retries:
+                log.warning(f"[RETRY] Request failed with exception, retrying ({attempt + 1}/{max_retries}): {str(e)}")
+                await asyncio.sleep(retry_interval)
+                continue
+            else:
+                log.error(f"Request to Google API failed: {str(e)}")
+                return _create_error_response(f"Request failed: {str(e)}")
     
     # 如果循环结束仍未成功，返回错误
-    return _create_error_response("Non-quota 429 max retries exceeded", 429)
+    return _create_error_response("Max retries exceeded", 429)
 
 
 async def _handle_streaming_response(resp: httpx.Response, credential_manager: CredentialManager = None) -> StreamingResponse:
