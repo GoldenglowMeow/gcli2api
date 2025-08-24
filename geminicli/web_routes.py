@@ -459,6 +459,8 @@ async def get_config(token: str = Depends(verify_token)):
         current_config.setdefault("calls_per_rotation", 10)
         current_config.setdefault("http_timeout", 30)
         current_config.setdefault("max_connections", 100)
+        current_config.setdefault("retry_429_max_retries", 20)
+        current_config.setdefault("retry_429_enabled", True)
         
         return JSONResponse(content={
             "config": current_config,
@@ -494,6 +496,14 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             if not isinstance(new_config["max_connections"], int) or new_config["max_connections"] < 10:
                 raise HTTPException(status_code=400, detail="最大连接数必须是大于等于10的整数")
         
+        if "retry_429_max_retries" in new_config:
+            if not isinstance(new_config["retry_429_max_retries"], int) or new_config["retry_429_max_retries"] < 0:
+                raise HTTPException(status_code=400, detail="最大429重试次数必须是大于等于0的整数")
+        
+        if "retry_429_enabled" in new_config:
+            if not isinstance(new_config["retry_429_enabled"], bool):
+                raise HTTPException(status_code=400, detail="429重试开关必须是布尔值")
+        
         # 读取现有的配置文件
         config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
         existing_config = {}
@@ -515,6 +525,10 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             env_locked_keys.add("proxy")
         if os.getenv("AUTO_BAN"):
             env_locked_keys.add("auto_ban_enabled")
+        if os.getenv("RETRY_429_MAX_RETRIES"):
+            env_locked_keys.add("retry_429_max_retries")
+        if os.getenv("RETRY_429_ENABLED"):
+            env_locked_keys.add("retry_429_enabled")
         
         for key, value in new_config.items():
             if key not in env_locked_keys:
