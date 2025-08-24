@@ -558,6 +558,9 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         
         new_config = request.config
         
+        log.info(f"收到的配置数据: {list(new_config.keys())}")
+        log.info(f"收到的password值: {new_config.get('password', 'NOT_FOUND')}")
+        
         # 验证配置项
         if "calls_per_rotation" in new_config:
             if not isinstance(new_config["calls_per_rotation"], int) or new_config["calls_per_rotation"] < 1:
@@ -653,14 +656,22 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         for key, value in new_config.items():
             if key not in env_locked_keys:
                 existing_config[key] = value
+                if key == 'password':
+                    log.info(f"设置password字段为: {value}")
+        
+        log.info(f"最终保存的existing_config中password = {existing_config.get('password', 'NOT_FOUND')}")
         
         # 使用config模块的保存函数
         config.save_config_to_toml(existing_config)
         
+        # 验证保存后的结果
+        test_password = config.get_server_password()
+        log.info(f"保存后立即读取的密码: {test_password}")
+        
         # 热更新配置到内存中的模块（如果可能）
         try:
-            # 重新加载配置缓存
-            config.reload_config_cache()
+            # save_config_to_toml已经更新了缓存，不需要reload
+            pass
             
             # 更新credential_manager的配置
             if "calls_per_rotation" in new_config and "calls_per_rotation" not in env_locked_keys:

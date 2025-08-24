@@ -523,7 +523,7 @@
         <div id="loginSection" class="login-form">
             <h1>Google OAuth 认证管理</h1>
             <p>请输入访问密码：</p>
-            <input type="password" id="password" placeholder="输入密码" onkeypress="handlePasswordEnter(event)" />
+            <input type="password" id="loginPassword" placeholder="输入密码" onkeypress="handlePasswordEnter(event)" />
             <br>
             <button class="btn" onclick="login()">登录</button>
         </div>
@@ -772,8 +772,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                             </div>
                             
                             <div class="form-group">
-                                <label for="password">访问密码:</label>
-                                <input type="text" id="password" class="config-input" placeholder="pwd" />
+                                <label for="configPassword">访问密码:</label>
+                                <input type="text" id="configPassword" class="config-input" placeholder="pwd" />
                                 <small class="config-note">API访问密码，用于认证和权限控制</small>
                             </div>
                         </div>
@@ -982,7 +982,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         // 登录相关函数
         async function login() {
             console.log('Login function called');
-            const password = document.getElementById('password').value;
+            const password = document.getElementById('loginPassword').value;
             console.log('Password length:', password ? password.length : 0);
             
             if (!password) {
@@ -1935,7 +1935,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             // 服务器配置
             setConfigField('host', currentConfig.host || '0.0.0.0');
             setConfigField('port', currentConfig.port || 7861);
-            setConfigField('password', currentConfig.password || 'pwd');
+            setConfigField('configPassword', currentConfig.password || 'pwd');
             
             // 基础配置
             setConfigField('codeAssistEndpoint', currentConfig.code_assist_endpoint || '');
@@ -1983,10 +1983,15 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
 
         async function saveConfig() {
             try {
+                // 调试：检查password字段的实际值
+                const passwordElement = document.getElementById('configPassword');
+                console.log('DEBUG: configPassword元素:', passwordElement);
+                console.log('DEBUG: configPassword值:', passwordElement ? passwordElement.value : 'ELEMENT_NOT_FOUND');
+                
                 const config = {
                     host: document.getElementById('host').value.trim(),
                     port: parseInt(document.getElementById('port').value) || 7861,
-                    password: document.getElementById('password').value.trim(),
+                    password: document.getElementById('configPassword').value.trim(),
                     code_assist_endpoint: document.getElementById('codeAssistEndpoint').value.trim(),
                     credentials_dir: document.getElementById('credentialsDir').value.trim(),
                     proxy: document.getElementById('proxy').value.trim(),
