@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from .credential_manager import CredentialManager
 from .utils import get_user_agent
-from .config import (
+from config import (
     CODE_ASSIST_ENDPOINT,
     DEFAULT_SAFETY_SETTINGS,
     get_base_model_name,

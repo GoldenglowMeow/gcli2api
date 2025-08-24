@@ -1,244 +1,168 @@
+"""
+Main Web Integration - Integrates all routers and modules
+根据修改指导要求，负责集合上述router并开启主服务
+"""
 import os
-import json
 import asyncio
 from contextlib import asynccontextmanager
-from functools import lru_cache
 
-from fastapi import FastAPI, HTTPException, Depends, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import JSONResponse, StreamingResponse
-from starlette.background import BackgroundTask
-from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from config import get_config_value
 
+# Import all routers
+from src.openai_router import router as openai_router
+from src.gemini_router import router as gemini_router
+from src.web_routes import router as web_router
+
+# Import managers and utilities
+from src.credential_manager import CredentialManager
+from config import get_config_value
 from log import log
-from models import Model, ModelList, ChatCompletionRequest, UniversalChatRequest
-from geminicli.client import GeminiCLIClient
-from geminicli.web_routes import router as geminicli_router
-from format_detector import validate_and_normalize_request
 
-load_dotenv()
-
-# 认证配置
-PASSWORD = os.getenv("PASSWORD", "pwd")
-PORT = int(os.getenv("PORT", "7861"))
-
-# 全局变量
-geminicli_client = None
-
-security = HTTPBearer()
-
-def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    token = credentials.credentials
-    if token != PASSWORD:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
-    return token
-
-async def fake_stream_response(request_data: ChatCompletionRequest):
-    """处理假流式响应"""
-    async def stream_generator():
-        try:
-            # 发送心跳
-            heartbeat = {
-                "choices": [{
-                    "index": 0,
-                    "delta": {"role": "assistant", "content": ""},
-                    "finish_reason": None
-                }]
-            }
-            yield f"data: {json.dumps(heartbeat)}\n\n".encode()
-            await asyncio.sleep(0.1)
-            
-            # 调用后端
-            task = asyncio.create_task(geminicli_client.chat_completion(request_data))
-            
-            # 等待完成，期间发送心跳
-            while not task.done():
-                await asyncio.sleep(5)
-                if not task.done():
-                    yield f"data: {json.dumps(heartbeat)}\n\n".encode()
-            
-            # 处理结果
-            result = await task
-            if hasattr(result, "body"):
-                body_str = result.body.decode() if isinstance(result.body, bytes) else str(result.body)
-            elif isinstance(result, dict):
-                body_str = json.dumps(result)
-            else:
-                body_str = str(result)
-            
-            try:
-                response_data = json.loads(body_str)
-                if "choices" in response_data and response_data["choices"]:
-                    content = response_data["choices"][0].get("message", {}).get("content", "")
-                    content_chunk = {
-                        "choices": [{
-                            "index": 0,
-                            "delta": {"role": "assistant", "content": content},
-                            "finish_reason": "stop"
-                        }]
-                    }
-                    yield f"data: {json.dumps(content_chunk)}\n\n".encode()
-                else:
-                    yield f"data: {body_str}\n\n".encode()
-            except json.JSONDecodeError:
-                error_chunk = {
-                    "choices": [{
-                        "index": 0,
-                        "delta": {"role": "assistant", "content": body_str},
-                        "finish_reason": "stop"
-                    }]
-                }
-                yield f"data: {json.dumps(error_chunk)}\n\n".encode()
-            
-            yield "data: [DONE]\n\n".encode()
-        except Exception as e:
-            log('error', f"假流式错误: {e}")
-            yield "data: [DONE]\n\n".encode()
-
-    response = StreamingResponse(stream_generator(), media_type="text/event-stream")
-    response.background = BackgroundTask(lambda: asyncio.run(response.body_iterator.aclose()))
-    return response
+# 全局凭证管理器
+global_credential_manager = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global geminicli_client
-    log('info', "启动应用")
-
+    """应用生命周期管理"""
+    global global_credential_manager
+    
+    log.info("启动 GCLI2API 主服务")
+    
+    # 初始化全局凭证管理器
     try:
-        geminicli_client = GeminiCLIClient()
-        await geminicli_client.initialize()
+        global_credential_manager = CredentialManager()
+        await global_credential_manager.initialize()
+        log.info("凭证管理器初始化成功")
     except Exception as e:
-        log('error', f"GeminiCLIClient 初始化失败: {e}")
-        geminicli_client = None
-
+        log.error(f"凭证管理器初始化失败: {e}")
+        global_credential_manager = None
+    
+    # OAuth回调服务器将在需要时按需启动
+    
     yield
     
-    if geminicli_client:
-        await geminicli_client.close()
-
-app = FastAPI(lifespan=lifespan)
-app.include_router(geminicli_router)
-
-@lru_cache()
-def get_model_list():
-    models = [
-        "gemini-2.5-pro-preview-06-05",
-        "gemini-2.5-pro-preview-06-05-假流式",
-        "gemini-2.5-pro",
-        "gemini-2.5-pro-假流式",
-        "gemini-2.5-pro-preview-05-06",
-        "gemini-2.5-pro-preview-05-06-假流式"
-    ]
-    return ModelList(data=[Model(id=m) for m in models])
-
-@app.get("/v1/models", response_model=ModelList)
-async def list_models():
-    response = JSONResponse(content=get_model_list().model_dump())
-    return response
-
-@app.post("/v1/chat/completions")
-async def chat_completions(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    token = authenticate(credentials)
+    # 清理资源
+    if global_credential_manager:
+        await global_credential_manager.close()
     
-    # Get raw request body
     try:
-        raw_data = await request.json()
+        from src.auth_api import stop_oauth_server
+        stop_oauth_server()
+        log.info("OAuth回调服务器已停止")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+        log.warning(f"停止OAuth回调服务器时出错: {e}")
     
-    # Auto-detect and normalize format
-    try:
-        normalized_data = validate_and_normalize_request(raw_data)
-    except Exception as e:
-        log.error(f"Request normalization failed: {e}")
-        raise HTTPException(status_code=400, detail=f"Request format error: {str(e)}")
-    
-    # Create request object from normalized data
-    try:
-        request_data = ChatCompletionRequest(**normalized_data)
-    except Exception as e:
-        log.error(f"Request validation failed: {e}")
-        raise HTTPException(status_code=400, detail=f"Request validation error: {str(e)}")
-    
-    # 健康检查
-    if (len(request_data.messages) == 1 and 
-        getattr(request_data.messages[0], "role", None) == "user" and
-        getattr(request_data.messages[0], "content", None) == "Hi"):
-        return JSONResponse(content={
-            "choices": [{"delta": {"role": "assistant", "content": "公益站正常工作中"}}]
-        })
-    
-    # 限制max_tokens
-    if getattr(request_data, "max_tokens", None) is not None and request_data.max_tokens > 65535:
-        request_data.max_tokens = 65535
-        
-    # 覆写 top_k 为 64（无论是否提供该参数）
-    setattr(request_data, "top_k", 64)
+    log.info("GCLI2API 主服务已停止")
 
-    # 过滤空消息，支持文本和图片消息
-    filtered_messages = []
-    for m in request_data.messages:
-        content = getattr(m, "content", None)
-        if content:
-            # 支持字符串类型的文本消息
-            if isinstance(content, str) and content.strip():
-                filtered_messages.append(m)
-            # 支持列表类型的多模态消息（包含图片）
-            elif isinstance(content, list) and len(content) > 0:
-                # 检查是否有有效的内容（文本或图片）
-                has_valid_content = False
-                for part in content:
-                    if isinstance(part, dict):
-                        # 文本部分
-                        if part.get("type") == "text" and part.get("text", "").strip():
-                            has_valid_content = True
-                            break
-                        # 图片部分
-                        elif part.get("type") == "image_url" and part.get("image_url", {}).get("url"):
-                            has_valid_content = True
-                            break
-                if has_valid_content:
-                    filtered_messages.append(m)
-    
-    request_data.messages = filtered_messages
-    
-    # 处理模型
-    model = request_data.model
-    if model.endswith("-假流式"):
-        real_model = model.replace("-假流式", "")
-    else:
-        real_model = model
-    
-    request_data.model = real_model
+# 创建FastAPI应用
+app = FastAPI(
+    title="GCLI2API",
+    description="Gemini API proxy with OpenAI compatibility",
+    version="2.0.0",
+    lifespan=lifespan
+)
 
-    # 假流式处理
-    if model.endswith("-假流式") and getattr(request_data, "stream", False):
-        request_data.stream = False
-        return await fake_stream_response(request_data)
-    
-    # 调用GeminiCLI客户端
-    return await geminicli_client.chat_completion(request_data)
+# CORS中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+# 挂载路由器
+# OpenAI兼容路由 - 处理OpenAI格式请求
+app.include_router(
+    openai_router,
+    prefix="",
+    tags=["OpenAI Compatible API"]
+)
+
+# Gemini原生路由 - 处理Gemini格式请求
+app.include_router(
+    gemini_router,
+    prefix="",
+    tags=["Gemini Native API"]
+)
+
+# Web路由 - 包含认证、凭证管理和控制面板功能
+app.include_router(
+    web_router,
+    prefix="",
+    tags=["Web Interface"]
+)
+
+@app.get("/")
+async def root():
+    """根路径 - 服务状态信息"""
+    return {
+        "service": "GCLI2API",
+        "version": "2.0.0",
+        "status": "running",
+        "endpoints": {
+            "openai_api": "/v1/chat/completions",
+            "openai_models": "/v1/models", 
+            "gemini_api": "/v1/models/{model}:generateContent",
+            "gemini_streaming": "/v1/models/{model}:streamGenerateContent",
+            "gemini_models": "/v1/models",
+            "control_panel": "/panel",
+            "auth_panel": "/auth"
+        },
+        "docs": "/docs",
+        "credential_manager": "initialized" if global_credential_manager else "failed"
+    }
+
+def get_credential_manager():
+    """获取全局凭证管理器实例"""
+    return global_credential_manager
+
+# 导出给其他模块使用
+__all__ = ['app', 'get_credential_manager']
 
 if __name__ == "__main__":
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
+    
+    # 从环境变量或配置获取端口
+    port = int(get_config_value("port", "7861", "PORT"))
+    host = get_config_value("host", "0.0.0.0", "HOST")
+    
+    print("=" * 60)
+    print("🚀 启动 GCLI2API 2.0 - 模块化架构")
+    print("=" * 60)
+    print(f"📍 服务地址: http://{host}:{port}")
+    print(f"📖 API文档: http://{host}:{port}/docs")
+    print(f"🔧 控制面板: http://{host}:{port}/panel")
+    print("=" * 60)
+    print("🔗 API端点:")
+    print(f"   OpenAI兼容: http://{host}:{port}/v1")
+    print(f"   Gemini原生: http://{host}:{port}")
+    print("=" * 60)
+    print("⚡ 功能特性:")
+    print("   ✓ OpenAI格式兼容")
+    print("   ✓ Gemini原生格式")  
+    print("   ✓ 429错误自动重试")
+    print("   ✓ 反截断完整输出")
+    print("   ✓ 凭证自动轮换")
+    print("   ✓ 实时管理面板")
+    print("=" * 60)
 
-    print("启动配置:")
-    print(f"  GeminiCLI客户端: 启用")
-    print(f"API地址 http://127.0.0.1:{PORT}/v1")
-    print(f"OAuth认证管理地址  http://127.0.0.1:{PORT}/auth")
-    print(f"默认密码 {PASSWORD}")
-    print("使用PASSWORD环境变量来设置密码")
-    print(f"使用PORT环境变量来设置端口 (当前: {PORT})")
-
+    # 配置hypercorn
     config = Config()
-    config.bind = [f"0.0.0.0:{PORT}"]
+    config.bind = [f"{host}:{port}"]
     config.accesslog = "-"
     config.errorlog = "-"
     config.loglevel = "INFO"
-    
+    config.use_colors = True
+
+    config = Config()
+    config.bind = [f"{host}:{port}"]
+    config.accesslog = "-"
+    config.errorlog = "-"
+    config.loglevel = "INFO"
+
     asyncio.run(serve(app, config))

@@ -16,10 +16,11 @@ import httpx
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
-from .config import (
-    CREDENTIALS_DIR, CODE_ASSIST_ENDPOINT, AUTO_BAN_ENABLED, AUTO_BAN_ERROR_CODES, 
+from config import (
+    CREDENTIALS_DIR, CODE_ASSIST_ENDPOINT,
     get_proxy_config, get_calls_per_rotation, get_http_timeout, get_max_connections,
-    get_auto_ban_enabled, get_auto_ban_error_codes
+    get_auto_ban_enabled,
+    get_auto_ban_error_codes
 )
 from .utils import get_user_agent, get_client_metadata
 from log import log
@@ -754,36 +755,3 @@ class CredentialManager:
                 await self._discover_credential_files()
         
         return await self.get_credentials()
-    
-    async def test_auto_ban(self, filename: str, status_code: int = 403, response_content: str = ""):
-        """测试自动封禁功能（仅用于调试）"""
-        log.info(f"[TEST] Testing auto ban for file {filename} with status code {status_code}")
-        log.info(f"[TEST] AUTO_BAN_ENABLED: {AUTO_BAN_ENABLED}")
-        log.info(f"[TEST] AUTO_BAN_ERROR_CODES: {AUTO_BAN_ERROR_CODES}")
-        await self.record_error(filename, status_code, response_content)
-        
-        # 检查状态
-        cred_state = self._get_cred_state(filename)
-        log.info(f"[TEST] After test, credential state: {cred_state}")
-    
-    async def test_cd_mechanism(self, filename: str, response_content: str = None):
-        """测试CD机制（仅用于调试）"""
-        if response_content is None:
-            # 使用真实的配额耗尽错误格式
-            response_content = '''{
-  "error": {
-    "code": 429,
-    "message": "Quota exceeded for quota metric 'StreamGenerateContent Requests' and limit 'StreamGenerateContent Requests per day per user per tier' of service 'cloudcode-pa.googleapis.com' for consumer 'project_number:681255809395'.",
-    "status": "RESOURCE_EXHAUSTED"
-  }
-}'''
-        
-        log.info(f"[TEST] Testing CD mechanism for file {filename}")
-        log.info(f"[TEST] Response content: {response_content}")
-        log.info(f"[TEST] Is quota exhausted: {self._is_quota_exhausted_error(response_content)}")
-        await self.record_error(filename, 429, response_content)
-        
-        # 检查状态
-        cred_state = self._get_cred_state(filename)
-        log.info(f"[TEST] After CD test, credential state: {cred_state}")
-        log.info(f"[TEST] CD until: {cred_state.get('cd_until', 'Not set')}")

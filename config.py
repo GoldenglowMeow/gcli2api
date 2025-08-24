@@ -3,7 +3,6 @@ Configuration constants for the Geminicli2api proxy server.
 Centralizes all configuration to avoid duplication across modules.
 """
 import os
-import httpx
 import toml
 from typing import Any, Optional
 
@@ -212,3 +211,95 @@ def get_retry_429_interval() -> float:
             pass
     
     return float(get_config_value("retry_429_interval", 0.1))
+
+def get_log_level() -> str:
+    """
+    Get log level.
+    
+    Environment variable: LOG_LEVEL
+    TOML config key: log_level
+    Default: info
+    Valid values: debug, info, warning, error, critical
+    """
+    level = get_config_value("log_level", "info", "LOG_LEVEL")
+    if isinstance(level, str):
+        level = level.lower()
+        if level in ["debug", "info", "warning", "error", "critical"]:
+            return level
+    return "info"
+
+def get_log_file() -> str:
+    """
+    Get log file path.
+    
+    Environment variable: LOG_FILE
+    TOML config key: log_file
+    Default: log.txt
+    """
+    return str(get_config_value("log_file", "log.txt", "LOG_FILE"))
+
+# Model name lists for different features
+BASE_MODELS = [
+    "gemini-2.5-pro-preview-06-05",
+    "gemini-2.5-pro", 
+    "gemini-2.5-pro-preview-05-06",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-thinking"
+]
+
+def get_available_models(router_type="openai"):
+    """
+    Get available models with feature suffixes.
+    
+    Args:
+        router_type: "openai" or "gemini"
+        
+    Returns:
+        List of model names with feature suffixes
+    """
+    models = []
+    
+    for base_model in BASE_MODELS:
+        # 基础模型
+        models.append(base_model)
+        
+        # 假流式模型
+        models.append(f"{base_model}-假流式")
+        
+        # 流式抗截断模型 (仅在流式传输时有效)
+        models.append(f"{base_model}-流式抗截断")
+    
+    return models
+
+def is_fake_streaming_model(model_name: str) -> bool:
+    """Check if model name indicates fake streaming should be used."""
+    return model_name.endswith("-假流式")
+
+def is_anti_truncation_model(model_name: str) -> bool:
+    """Check if model name indicates anti-truncation should be used."""
+    return model_name.endswith("-流式抗截断")
+
+def get_base_model_from_feature_model(model_name: str) -> str:
+    """Get base model name from feature model name."""
+    # Remove feature suffixes
+    for suffix in ["-假流式", "-流式抗截断"]:
+        if model_name.endswith(suffix):
+            return model_name[:-len(suffix)]
+    return model_name
+
+def get_anti_truncation_max_attempts() -> int:
+    """
+    Get maximum attempts for anti-truncation continuation.
+    
+    Environment variable: ANTI_TRUNCATION_MAX_ATTEMPTS
+    TOML config key: anti_truncation_max_attempts
+    Default: 3
+    """
+    env_value = os.getenv("ANTI_TRUNCATION_MAX_ATTEMPTS")
+    if env_value:
+        try:
+            return int(env_value)
+        except ValueError:
+            pass
+    
+    return int(get_config_value("anti_truncation_max_attempts", 3))

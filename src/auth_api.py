@@ -12,13 +12,14 @@ from typing import Optional, Dict, Any, List
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 import uuid
+from config import get_config_value
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request as GoogleAuthRequest
 import httpx
 
-from .config import CREDENTIALS_DIR
+from config import CREDENTIALS_DIR
 
 # OAuth Configuration
 CLIENT_ID = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
@@ -31,13 +32,50 @@ SCOPES = [
 
 # 回调服务器配置
 CALLBACK_HOST = 'localhost'
-CALLBACK_PORT = int(os.getenv('OAUTH_CALLBACK_PORT', '8080'))
-CALLBACK_URL = f"http://{CALLBACK_HOST}:{CALLBACK_PORT}"
+DEFAULT_CALLBACK_PORT = int(get_config_value('oauth_callback_port', '8080', 'OAUTH_CALLBACK_PORT'))
+
+import socket
 
 # 全局状态管理
 auth_flows = {}  # 存储进行中的认证流程
-oauth_server = None  # 全局OAuth回调服务器
-oauth_server_thread = None  # 服务器线程
+
+def find_available_port(start_port: int = None) -> int:
+    """动态查找可用端口"""
+    if start_port is None:
+        start_port = DEFAULT_CALLBACK_PORT
+    
+    # 首先尝试默认端口
+    for port in range(start_port, start_port + 100):  # 尝试100个端口
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(('0.0.0.0', port))
+                log.info(f"找到可用端口: {port}")
+                return port
+        except OSError:
+            continue
+    
+    # 如果都不可用，让系统自动分配端口
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('0.0.0.0', 0))
+            port = s.getsockname()[1]
+            log.info(f"系统分配可用端口: {port}")
+            return port
+    except OSError as e:
+        log.error(f"无法找到可用端口: {e}")
+        raise RuntimeError("无法找到可用端口")
+
+def create_callback_server(port: int) -> HTTPServer:
+    """创建指定端口的回调服务器"""
+    try:
+        # 服务器监听0.0.0.0
+        server = HTTPServer(("0.0.0.0", port), AuthCallbackHandler)
+        log.info(f"创建OAuth回调服务器，监听端口: {port}")
+        return server
+    except OSError as e:
+        log.error(f"创建端口{port}的服务器失败: {e}")
+        raise
 
 class AuthCallbackHandler(BaseHTTPRequestHandler):
     """OAuth回调处理器"""
@@ -244,14 +282,30 @@ async def auto_detect_project_id() -> Optional[str]:
 
 
 def create_auth_url(project_id: Optional[str] = None, user_session: str = None) -> Dict[str, Any]:
-    """创建认证URL，支持自动检测项目ID"""
+    """创建认证URL，支持动态端口分配"""
     try:
-        # 确保OAuth回调服务器正在运行
-        if not ensure_oauth_server_running():
+        # 动态分配端口
+        callback_port = find_available_port()
+        callback_url = f"http://{CALLBACK_HOST}:{callback_port}"
+        
+        # 立即启动回调服务器
+        try:
+            callback_server = create_callback_server(callback_port)
+            # 在后台线程中运行服务器
+            server_thread = threading.Thread(
+                target=callback_server.serve_forever, 
+                daemon=True,
+                name=f"OAuth-Server-{callback_port}"
+            )
+            server_thread.start()
+            log.info(f"OAuth回调服务器已启动，端口: {callback_port}")
+        except Exception as e:
+            log.error(f"启动回调服务器失败: {e}")
             return {
                 'success': False,
-                'error': f'无法启动OAuth回调服务器，端口{CALLBACK_PORT}可能被占用'
+                'error': f'无法启动OAuth回调服务器，端口{callback_port}: {str(e)}'
             }
+        
         # 创建OAuth流程
         client_config = {
             "installed": {
@@ -265,7 +319,7 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
         flow = Flow.from_client_config(
             client_config,
             scopes=SCOPES,
-            redirect_uri=CALLBACK_URL
+            redirect_uri=callback_url
         )
         
         flow.oauth2session.scope = SCOPES
@@ -289,6 +343,10 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
             'flow': flow,
             'project_id': project_id,  # 可能为None，稍后在回调时确定
             'user_session': user_session,
+            'callback_port': callback_port,  # 存储分配的端口
+            'callback_url': callback_url,   # 存储完整回调URL
+            'server': callback_server,  # 存储服务器实例
+            'server_thread': server_thread,  # 存储服务器线程
             'code': None,
             'completed': False,
             'created_at': time.time(),
@@ -299,11 +357,13 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
         cleanup_expired_flows()
         
         log.info(f"OAuth流程已创建: state={state}, project_id={project_id}")
-        log.info(f"用户需要访问认证URL，然后OAuth会回调到 {CALLBACK_URL}")
+        log.info(f"用户需要访问认证URL，然后OAuth会回调到 {callback_url}")
+        log.info(f"为此认证流程分配的端口: {callback_port}")
         
         return {
             'auth_url': auth_url,
             'state': state,
+            'callback_port': callback_port,
             'success': True,
             'auto_project_detection': project_id is None,
             'detected_project_id': project_id
@@ -317,47 +377,32 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
         }
 
 
-def start_callback_server():
-    """启动回调服务器"""
-    try:
-        # 回源服务器监听0.0.0.0
-        server = HTTPServer(("0.0.0.0", CALLBACK_PORT), AuthCallbackHandler)
-        return server
-    except OSError as e:
-        if "Address already in use" in str(e):
-            log.warning(f"端口{CALLBACK_PORT}已被占用，可能有其他OAuth流程正在进行")
-            return None
-        raise
-
-
 def wait_for_callback_sync(state: str, timeout: int = 300) -> Optional[str]:
-    """同步等待OAuth回调完成"""
-    server = start_callback_server()
-    
-    if not server:
-        log.error("无法启动回调服务器，端口可能被占用")
+    """同步等待OAuth回调完成，使用对应流程的专用服务器"""
+    if state not in auth_flows:
+        log.error(f"未找到状态为 {state} 的认证流程")
         return None
     
-    try:
-        log.info("启动OAuth回调服务器，等待用户授权...")
+    flow_data = auth_flows[state]
+    callback_port = flow_data['callback_port']
+    
+    # 服务器已经在create_auth_url时启动了，这里只需要等待
+    log.info(f"等待OAuth回调完成，端口: {callback_port}")
+    
+    # 等待回调完成
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if flow_data.get('code'):
+            log.info(f"OAuth回调成功完成")
+            return flow_data['code']
+        time.sleep(0.5)  # 每0.5秒检查一次
         
-        # 使用handle_request()等待单个请求
-        server.handle_request()
-        
-        # 检查是否获取到了授权码
+        # 刷新flow_data引用
         if state in auth_flows:
-            return auth_flows[state].get('code')
-        
-        return None
-        
-    except Exception as e:
-        log.error(f"等待回调时出错: {e}")
-        return None
-    finally:
-        try:
-            server.server_close()
-        except:
-            pass
+            flow_data = auth_flows[state]
+    
+    log.warning(f"等待OAuth回调超时 ({timeout}秒)")
+    return None
 
 
 async def complete_auth_flow(project_id: Optional[str] = None, user_session: str = None) -> Dict[str, Any]:
@@ -534,6 +579,16 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
             
             # 清理使用过的流程
             if state in auth_flows:
+                flow_data_to_clean = auth_flows[state]
+                # 关闭服务器
+                try:
+                    if flow_data_to_clean.get('server'):
+                        flow_data_to_clean['server'].shutdown()
+                        flow_data_to_clean['server'].server_close()
+                        log.info(f"已关闭端口 {flow_data_to_clean.get('callback_port')} 的OAuth回调服务器")
+                except Exception as e:
+                    log.debug(f"关闭服务器时出错: {e}")
+                
                 del auth_flows[state]
             
             log.info("OAuth认证成功，凭证已保存")
@@ -788,6 +843,16 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
             
             # 清理使用过的流程
             if state in auth_flows:
+                flow_data_to_clean = auth_flows[state]
+                # 关闭服务器
+                try:
+                    if flow_data_to_clean.get('server'):
+                        flow_data_to_clean['server'].shutdown()
+                        flow_data_to_clean['server'].server_close()
+                        log.info(f"已关闭端口 {flow_data_to_clean.get('callback_port')} 的OAuth回调服务器")
+                except Exception as e:
+                    log.debug(f"关闭服务器时出错: {e}")
+                
                 del auth_flows[state]
             
             log.info("OAuth认证成功，凭证已保存")
@@ -862,6 +927,16 @@ def cleanup_expired_flows():
             expired_states.append(state)
     
     for state in expired_states:
+        flow_data = auth_flows[state]
+        # 关闭可能存在的服务器
+        try:
+            if flow_data.get('server'):
+                flow_data['server'].shutdown()
+                flow_data['server'].server_close()
+                log.info(f"清理过期流程时关闭端口 {flow_data.get('callback_port')} 的服务器")
+        except Exception as e:
+            log.debug(f"清理过期流程时关闭服务器失败: {e}")
+        
         del auth_flows[state]
     
     if expired_states:
@@ -889,7 +964,7 @@ auth_tokens = {}  # 存储有效的认证令牌
 
 def verify_password(password: str) -> bool:
     """验证密码"""
-    correct_password = os.getenv('PASSWORD', 'pwd')
+    correct_password = get_config_value('password', 'pwd', 'PASSWORD')
     if not correct_password:
         log.warning("PASSWORD环境变量未设置，拒绝访问")
         return False
@@ -1040,51 +1115,3 @@ def batch_upload_credentials(files_data: List[Dict[str, str]]) -> Dict[str, Any]
     }
 
 
-def start_oauth_server():
-    """启动全局OAuth回调服务器"""
-    global oauth_server, oauth_server_thread
-    
-    if oauth_server is not None:
-        log.info(f"OAuth回调服务器已在运行")
-        return True
-    
-    try:
-        # 回源服务器监听0.0.0.0
-        oauth_server = HTTPServer(("0.0.0.0", CALLBACK_PORT), AuthCallbackHandler)
-        oauth_server_thread = threading.Thread(target=oauth_server.serve_forever, daemon=True)
-        oauth_server_thread.start()
-        log.info(f"OAuth回调服务器已启动")
-        return True
-    except OSError as e:
-        if "Address already in use" in str(e):
-            log.warning(f"端口{CALLBACK_PORT}已被占用，OAuth回调可能无法正常工作")
-            return False
-        log.error(f"启动OAuth服务器失败: {e}")
-        return False
-    except Exception as e:
-        log.error(f"启动OAuth服务器时出现未知错误: {e}")
-        return False
-
-
-def stop_oauth_server():
-    """停止OAuth回调服务器"""
-    global oauth_server, oauth_server_thread
-    
-    if oauth_server is not None:
-        oauth_server.shutdown()
-        oauth_server.server_close()
-        oauth_server = None
-        log.info("OAuth回调服务器已停止")
-    
-    if oauth_server_thread is not None:
-        oauth_server_thread.join(timeout=5)
-        oauth_server_thread = None
-
-
-def ensure_oauth_server_running():
-    """确保OAuth服务器正在运行"""
-    global oauth_server
-    
-    if oauth_server is None:
-        return start_oauth_server()
-    return True

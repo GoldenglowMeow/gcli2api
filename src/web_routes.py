@@ -1,22 +1,32 @@
 """
-Web路由模块 - 处理认证相关的HTTP请求
+Web路由模块 - 处理认证相关的HTTP请求和控制面板功能
 用于与上级web.py集成
 """
 import os
-import logging
+from log import log
 import json
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+import asyncio
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
 from .auth_api import (
     create_auth_url, get_auth_status,
     verify_password, generate_auth_token, verify_auth_token,
-    batch_upload_credentials, asyncio_complete_auth_flow, auto_detect_project_id
+    batch_upload_credentials, asyncio_complete_auth_flow, 
 )
 from .credential_manager import CredentialManager
+from config import (
+    get_config_value, save_config_to_toml, reload_config_cache,
+    get_calls_per_rotation, get_http_timeout, get_max_connections,
+    get_auto_ban_enabled, get_auto_ban_error_codes,
+    get_retry_429_max_retries, get_retry_429_enabled, get_retry_429_interval,
+    get_proxy_config
+)
+from log import log
 
 # 创建路由器
 router = APIRouter()
@@ -25,10 +35,51 @@ security = HTTPBearer()
 # 创建credential manager实例
 credential_manager = CredentialManager()
 
+# WebSocket连接管理
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections.copy():
+            try:
+                await connection.send_text(message)
+            except:
+                self.disconnect(connection)
+
+manager = ConnectionManager()
+
 async def ensure_credential_manager_initialized():
     """确保credential manager已初始化"""
     if not credential_manager._initialized:
         await credential_manager.initialize()
+
+async def get_credential_manager():
+    """获取全局凭证管理器实例"""
+    global credential_manager
+    if not credential_manager:
+        credential_manager = CredentialManager()
+        await credential_manager.initialize()
+    return credential_manager
+
+def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+    """验证用户密码（控制面板使用）"""
+    password = get_config_value("password", "pwd", "PASSWORD")
+    token = credentials.credentials
+    if token != password:
+        raise HTTPException(status_code=403, detail="密码错误")
+    return token
 
 class LoginRequest(BaseModel):
     password: str
@@ -47,6 +98,7 @@ class ConfigSaveRequest(BaseModel):
     config: dict
 
 
+
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """验证认证令牌"""
     if not verify_auth_token(credentials.credentials):
@@ -56,17 +108,17 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
 @router.get("/auth", response_class=HTMLResponse)
 async def serve_auth_page():
-    """提供认证页面"""
+    """提供认证页面（重定向到控制面板）"""
     try:
-        # 读取HTML文件
-        html_file_path = "./geminicli/auth_web_manager.html"
+        # 读取统一的控制面板HTML文件
+        html_file_path = "front/control_panel.html"
         with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
         return HTMLResponse(content=html_content)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="认证页面不存在")
+        raise HTTPException(status_code=404, detail="控制面板页面不存在")
     except Exception as e:
-        logging.error(f"加载认证页面失败: {e}")
+        log.error(f"加载控制面板页面失败: {e}")
         raise HTTPException(status_code=500, detail="服务器内部错误")
 
 
@@ -82,7 +134,7 @@ async def login(request: LoginRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"登录失败: {e}")
+        log.error(f"登录失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -93,7 +145,7 @@ async def start_auth(request: AuthStartRequest, token: str = Depends(verify_toke
         # 如果没有提供项目ID，尝试自动检测
         project_id = request.project_id
         if not project_id:
-            logging.info("用户未提供项目ID，后续将使用自动检测...")
+            log.info("用户未提供项目ID，后续将使用自动检测...")
         
         # 使用认证令牌作为用户会话标识
         user_session = token if token else None
@@ -112,7 +164,7 @@ async def start_auth(request: AuthStartRequest, token: str = Depends(verify_toke
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"开始认证流程失败: {e}")
+        log.error(f"开始认证流程失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -162,7 +214,7 @@ async def auth_callback(request: AuthCallbackRequest, token: str = Depends(verif
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"处理认证回调失败: {e}")
+        log.error(f"处理认证回调失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -177,7 +229,7 @@ async def check_auth_status(project_id: str, token: str = Depends(verify_token))
         return JSONResponse(content=status)
         
     except Exception as e:
-        logging.error(f"检查认证状态失败: {e}")
+        log.error(f"检查认证状态失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -219,7 +271,7 @@ async def upload_credentials(files: List[UploadFile] = File(...), token: str = D
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"批量上传失败: {e}")
+        log.error(f"批量上传失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -251,7 +303,7 @@ async def get_creds_status(token: str = Depends(verify_token)):
                     "modified_time": os.path.getmtime(filename)
                 }
             except Exception as e:
-                logging.error(f"读取凭证文件失败 {filename}: {e}")
+                log.error(f"读取凭证文件失败 {filename}: {e}")
                 creds_info[filename] = {
                     "status": file_status,
                     "content": None,
@@ -262,7 +314,7 @@ async def get_creds_status(token: str = Depends(verify_token)):
         return JSONResponse(content={"creds": creds_info})
         
     except Exception as e:
-        logging.error(f"获取凭证状态失败: {e}")
+        log.error(f"获取凭证状态失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -272,38 +324,38 @@ async def creds_action(request: CredFileActionRequest, token: str = Depends(veri
     try:
         await ensure_credential_manager_initialized()
         
-        logging.info(f"Received request: {request}")
+        log.info(f"Received request: {request}")
         
         filename = request.filename
         action = request.action
         
-        logging.info(f"Performing action '{action}' on file: {filename}")
+        log.info(f"Performing action '{action}' on file: {filename}")
         
         # 验证文件路径安全性
-        logging.info(f"Validating file path: {repr(filename)}")
-        logging.info(f"Is absolute: {os.path.isabs(filename)}")
-        logging.info(f"Ends with .json: {filename.endswith('.json')}")
+        log.info(f"Validating file path: {repr(filename)}")
+        log.info(f"Is absolute: {os.path.isabs(filename)}")
+        log.info(f"Ends with .json: {filename.endswith('.json')}")
         
         # 如果不是绝对路径，转换为绝对路径
         if not os.path.isabs(filename):
-            from .config import CREDENTIALS_DIR
+            from config import CREDENTIALS_DIR
             filename = os.path.abspath(os.path.join(CREDENTIALS_DIR, os.path.basename(filename)))
-            logging.info(f"Converted to absolute path: {filename}")
+            log.info(f"Converted to absolute path: {filename}")
         
         if not filename.endswith('.json'):
-            logging.error(f"Invalid file path: {filename} (not a .json file)")
+            log.error(f"Invalid file path: {filename} (not a .json file)")
             raise HTTPException(status_code=400, detail=f"无效的文件路径: {filename}")
         
         # 确保文件在CREDENTIALS_DIR内（安全检查）
-        from .config import CREDENTIALS_DIR
+        from config import CREDENTIALS_DIR
         credentials_dir_abs = os.path.abspath(CREDENTIALS_DIR)
         filename_abs = os.path.abspath(filename)
         if not filename_abs.startswith(credentials_dir_abs):
-            logging.error(f"Security violation: file outside credentials directory: {filename}")
+            log.error(f"Security violation: file outside credentials directory: {filename}")
             raise HTTPException(status_code=400, detail="文件路径不在允许的目录内")
         
         if not os.path.exists(filename):
-            logging.error(f"File not found: {filename}")
+            log.error(f"File not found: {filename}")
             raise HTTPException(status_code=404, detail="文件不存在")
         
         if action == "enable":
@@ -332,7 +384,7 @@ async def creds_action(request: CredFileActionRequest, token: str = Depends(veri
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"凭证文件操作失败: {e}")
+        log.error(f"凭证文件操作失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -341,7 +393,7 @@ async def download_cred_file(filename: str, token: str = Depends(verify_token)):
     """下载单个凭证文件"""
     try:
         # 构建完整路径
-        from .config import CREDENTIALS_DIR
+        from config import CREDENTIALS_DIR
         filepath = os.path.join(CREDENTIALS_DIR, filename)
         
         # 验证文件路径安全性
@@ -362,7 +414,7 @@ async def download_cred_file(filename: str, token: str = Depends(verify_token)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"下载凭证文件失败: {e}")
+        log.error(f"下载凭证文件失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -372,7 +424,7 @@ async def download_all_creds(token: str = Depends(verify_token)):
     try:
         import zipfile
         import io
-        from .config import CREDENTIALS_DIR
+        from config import CREDENTIALS_DIR
         
         # 创建内存中的ZIP文件
         zip_buffer = io.BytesIO()
@@ -395,7 +447,7 @@ async def download_all_creds(token: str = Depends(verify_token)):
         )
         
     except Exception as e:
-        logging.error(f"打包下载失败: {e}")
+        log.error(f"打包下载失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -406,7 +458,7 @@ async def get_config(token: str = Depends(verify_token)):
         await ensure_credential_manager_initialized()
         
         # 导入配置相关模块
-        from . import config
+        import config
         import toml
         
         # 读取当前配置（包括环境变量和TOML文件中的配置）
@@ -453,7 +505,7 @@ async def get_config(token: str = Depends(verify_token)):
                     if key not in env_locked:
                         current_config[key] = value
         except Exception as e:
-            logging.warning(f"读取TOML配置失败: {e}")
+            log.warning(f"读取TOML配置失败: {e}")
         
         # 设置默认值
         current_config.setdefault("calls_per_rotation", 10)
@@ -469,7 +521,7 @@ async def get_config(token: str = Depends(verify_token)):
         })
         
     except Exception as e:
-        logging.error(f"获取配置失败: {e}")
+        log.error(f"获取配置失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -479,7 +531,7 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
     try:
         await ensure_credential_manager_initialized()
         
-        from . import config
+        import config
         import toml
         
         new_config = request.config
@@ -514,7 +566,7 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
                 with open(config_file, "r", encoding="utf-8") as f:
                     existing_config = toml.load(f)
         except Exception as e:
-            logging.warning(f"读取现有配置文件失败: {e}")
+            log.warning(f"读取现有配置文件失败: {e}")
         
         # 只更新不被环境变量锁定的配置项
         env_locked_keys = set()
@@ -564,7 +616,7 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
                         client_kwargs["proxy"] = proxy
                     credential_manager._http_client = __import__('httpx').AsyncClient(**client_kwargs)
         except Exception as e:
-            logging.warning(f"热更新配置失败: {e}")
+            log.warning(f"热更新配置失败: {e}")
         
         return JSONResponse(content={
             "message": "配置保存成功",
@@ -574,5 +626,52 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"保存配置失败: {e}")
+        log.error(f"保存配置失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# 实时日志WebSocket (Real-time Logs WebSocket)
+# =============================================================================
+
+@router.websocket("/panel/logs/stream")
+async def websocket_logs(websocket: WebSocket):
+    """WebSocket端点，用于实时日志流"""
+    await manager.connect(websocket)
+    try:
+        # 发送最近的日志
+        log_file_path = "log.txt"
+        if os.path.exists(log_file_path):
+            try:
+                with open(log_file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    # 发送最后100行
+                    for line in lines[-100:]:
+                        await websocket.send_text(line.strip())
+            except Exception as e:
+                await websocket.send_text(f"Error reading log file: {e}")
+        
+        # 监控日志文件变化（简单实现）
+        last_size = os.path.getsize(log_file_path) if os.path.exists(log_file_path) else 0
+        
+        while True:
+            await asyncio.sleep(1)
+            
+            if os.path.exists(log_file_path):
+                current_size = os.path.getsize(log_file_path)
+                if current_size > last_size:
+                    # 读取新增内容
+                    with open(log_file_path, "r", encoding="utf-8") as f:
+                        f.seek(last_size)
+                        new_content = f.read()
+                        for line in new_content.splitlines():
+                            if line.strip():
+                                await websocket.send_text(line)
+                    last_size = current_size
+                    
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        log.error(f"WebSocket logs error: {e}")
+        manager.disconnect(websocket)
+

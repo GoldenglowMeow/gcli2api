@@ -528,6 +528,7 @@
                 <button class="tab" onclick="switchTab('upload')">批量上传</button>
                 <button class="tab" onclick="switchTab('manage')">文件管理</button>
                 <button class="tab" onclick="switchTab('config')">配置管理</button>
+                <button class="tab" onclick="switchTab('logs')">实时日志</button>
             </div>
 
             <!-- OAuth认证标签页 -->
@@ -769,6 +770,41 @@
                 </div>
             </div>
 
+            <!-- 实时日志标签页 -->
+            <div id="logsTab" class="tab-content">
+                <h3>实时日志</h3>
+                <p>查看系统实时日志输出，支持日志筛选和自动滚动</p>
+                
+                <div class="manage-actions">
+                    <button class="refresh-btn" onclick="connectWebSocket()">连接日志流</button>
+                    <button class="btn" style="background-color: #dc3545;" onclick="disconnectWebSocket()">断开连接</button>
+                    <button class="btn" style="background-color: #6c757d;" onclick="clearLogs()">清空日志</button>
+                </div>
+                
+                <div class="filter-container">
+                    <label for="logLevelFilter">日志级别筛选：</label>
+                    <select id="logLevelFilter" class="filter-select" onchange="filterLogs()">
+                        <option value="all">全部</option>
+                        <option value="ERROR">错误</option>
+                        <option value="WARNING">警告</option>
+                        <option value="INFO">信息</option>
+                        <option value="DEBUG">调试</option>
+                    </select>
+                    
+                    <label>
+                        <input type="checkbox" id="autoScroll" checked> 自动滚动到底部
+                    </label>
+                </div>
+                
+                <div id="logConnectionStatus" class="status info">
+                    <strong>连接状态：</strong> <span id="connectionStatusText">未连接</span>
+                </div>
+                
+                <div id="logContainer" style="background-color: #1e1e1e; color: #ffffff; font-family: 'Courier New', monospace; font-size: 12px; height: 600px; overflow-y: auto; border: 1px solid #333; border-radius: 5px; padding: 15px; white-space: pre-wrap; word-break: break-all;">
+                    <div id="logContent">等待连接日志流...</div>
+                </div>
+            </div>
+
             <div id="statusSection"></div>
         </div>
     </div>
@@ -867,6 +903,10 @@
             // 如果切换到配置管理页面，自动加载配置
             if (tabName === 'config') {
                 loadConfig();
+            }
+            // 如果切换到日志页面，自动连接WebSocket
+            if (tabName === 'logs') {
+                connectWebSocket();
             }
         }
 
@@ -1149,6 +1189,112 @@
             const files = Array.from(event.dataTransfer.files);
             addFiles(files);
         });
+
+        // WebSocket日志相关变量和函数
+        let logWebSocket = null;
+        let allLogs = [];
+        let filteredLogs = [];
+        let currentLogFilter = 'all';
+
+        function connectWebSocket() {
+            if (logWebSocket && logWebSocket.readyState === WebSocket.OPEN) {
+                showStatus('WebSocket已经连接', 'info');
+                return;
+            }
+
+            try {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/panel/logs/stream`;
+                
+                document.getElementById('connectionStatusText').textContent = '连接中...';
+                document.getElementById('logConnectionStatus').className = 'status info';
+                
+                logWebSocket = new WebSocket(wsUrl);
+                
+                logWebSocket.onopen = function(event) {
+                    document.getElementById('connectionStatusText').textContent = '已连接';
+                    document.getElementById('logConnectionStatus').className = 'status success';
+                    showStatus('日志流连接成功', 'success');
+                    clearLogs(); // 清空旧日志
+                };
+                
+                logWebSocket.onmessage = function(event) {
+                    const logLine = event.data;
+                    if (logLine.trim()) {
+                        allLogs.push(logLine);
+                        
+                        // 限制日志数量，保留最后1000条
+                        if (allLogs.length > 1000) {
+                            allLogs = allLogs.slice(-1000);
+                        }
+                        
+                        filterLogs();
+                        
+                        // 自动滚动到底部
+                        if (document.getElementById('autoScroll').checked) {
+                            const logContainer = document.getElementById('logContainer');
+                            logContainer.scrollTop = logContainer.scrollHeight;
+                        }
+                    }
+                };
+                
+                logWebSocket.onclose = function(event) {
+                    document.getElementById('connectionStatusText').textContent = '连接断开';
+                    document.getElementById('logConnectionStatus').className = 'status error';
+                    showStatus('日志流连接断开', 'info');
+                };
+                
+                logWebSocket.onerror = function(error) {
+                    document.getElementById('connectionStatusText').textContent = '连接错误';
+                    document.getElementById('logConnectionStatus').className = 'status error';
+                    showStatus('日志流连接错误: ' + error, 'error');
+                };
+                
+            } catch (error) {
+                showStatus('创建WebSocket连接失败: ' + error.message, 'error');
+                document.getElementById('connectionStatusText').textContent = '连接失败';
+                document.getElementById('logConnectionStatus').className = 'status error';
+            }
+        }
+
+        function disconnectWebSocket() {
+            if (logWebSocket) {
+                logWebSocket.close();
+                logWebSocket = null;
+                document.getElementById('connectionStatusText').textContent = '未连接';
+                document.getElementById('logConnectionStatus').className = 'status info';
+                showStatus('日志流连接已断开', 'info');
+            }
+        }
+
+        function clearLogs() {
+            allLogs = [];
+            filteredLogs = [];
+            document.getElementById('logContent').textContent = '日志已清空，等待新日志...';
+        }
+
+        function filterLogs() {
+            const filter = document.getElementById('logLevelFilter').value;
+            currentLogFilter = filter;
+            
+            if (filter === 'all') {
+                filteredLogs = [...allLogs];
+            } else {
+                filteredLogs = allLogs.filter(log => log.toUpperCase().includes(filter));
+            }
+            
+            displayLogs();
+        }
+
+        function displayLogs() {
+            const logContent = document.getElementById('logContent');
+            if (filteredLogs.length === 0) {
+                logContent.textContent = currentLogFilter === 'all' ? 
+                    '暂无日志...' : `暂无${currentLogFilter}级别的日志...`;
+            } else {
+                logContent.textContent = filteredLogs.join('\n');
+            }
+        }
 
         // 凭证文件管理相关函数
         async function refreshCredsStatus() {
