@@ -201,3 +201,14 @@ def get_retry_429_enabled() -> bool:
         return env_value.lower() in ("true", "1", "yes", "on")
     
     return bool(get_config_value("retry_429_enabled", True))
+
+def get_retry_429_interval() -> float:
+    """Get 429 retry interval in seconds."""
+    env_value = os.getenv("RETRY_429_INTERVAL")
+    if env_value:
+        try:
+            return float(env_value)
+        except ValueError:
+            pass
+    
+    return float(get_config_value("retry_429_interval", 0.1))

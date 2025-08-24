@@ -461,6 +461,7 @@ async def get_config(token: str = Depends(verify_token)):
         current_config.setdefault("max_connections", 100)
         current_config.setdefault("retry_429_max_retries", 20)
         current_config.setdefault("retry_429_enabled", True)
+        current_config.setdefault("retry_429_interval", 0.1)
         
         return JSONResponse(content={
             "config": current_config,

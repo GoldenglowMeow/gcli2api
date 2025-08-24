@@ -19,7 +19,8 @@ from .config import (
     get_auto_ban_enabled,
     get_auto_ban_error_codes,
     get_retry_429_max_retries,
-    get_retry_429_enabled
+    get_retry_429_enabled,
+    get_retry_429_interval
 )
 import asyncio
 
@@ -100,6 +101,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
     # 获取429重试配置
     max_retries = get_retry_429_max_retries()
     retry_429_enabled = get_retry_429_enabled()
+    retry_interval = get_retry_429_interval()
     retry_count = 0
     
     while retry_count <= max_retries:
@@ -158,7 +160,9 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                                                     await credential_manager.increment_call_count()
                                                     # 检查是否需要轮换凭证
                                                     await credential_manager._rotate_credential_if_needed()
-                                                await asyncio.sleep(0.05)  # 50ms 延迟间隔
+                                                    # 更新current_file以获取轮换后的凭证文件名
+                                                    current_file = credential_manager.get_current_file_path()
+                                                await asyncio.sleep(retry_interval)
                                                 continue
                                             else:
                                                 log.error(f"[RETRY] Max retries ({max_retries}) exceeded for 429 error")
@@ -244,7 +248,9 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                                 await credential_manager.increment_call_count()
                                 # 检查是否需要轮换凭证
                                 await credential_manager._rotate_credential_if_needed()
-                            await asyncio.sleep(0.05)  # 50ms 延迟间隔
+                                # 更新current_file以获取轮换后的凭证文件名
+                                current_file = credential_manager.get_current_file_path()
+                            await asyncio.sleep(retry_interval)
                             continue
                         else:
                             log.error(f"[RETRY] Max retries ({max_retries}) exceeded for non-quota 429 error")
