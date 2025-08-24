@@ -2,13 +2,11 @@
 Main Web Integration - Integrates all routers and modules
 根据修改指导要求，负责集合上述router并开启主服务
 """
-import os
 import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from config import get_config_value
 
 # Import all routers
@@ -39,6 +37,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"凭证管理器初始化失败: {e}")
         global_credential_manager = None
+    
+    # 自动从环境变量加载凭证
+    try:
+        from src.auth_api import auto_load_env_credentials_on_startup
+        auto_load_env_credentials_on_startup()
+    except Exception as e:
+        log.error(f"自动加载环境变量凭证失败: {e}")
     
     # OAuth回调服务器将在需要时按需启动
     
@@ -109,8 +114,7 @@ async def root():
             "gemini_api": "/v1/models/{model}:generateContent",
             "gemini_streaming": "/v1/models/{model}:streamGenerateContent",
             "gemini_models": "/v1/models",
-            "control_panel": "/panel",
-            "auth_panel": "/auth"
+            "control_panel": "/auth",
         },
         "docs": "/docs",
         "credential_manager": "initialized" if global_credential_manager else "failed"
@@ -131,25 +135,25 @@ if __name__ == "__main__":
     port = int(get_config_value("port", "7861", "PORT"))
     host = get_config_value("host", "0.0.0.0", "HOST")
     
-    print("=" * 60)
-    print("🚀 启动 GCLI2API 2.0 - 模块化架构")
-    print("=" * 60)
-    print(f"📍 服务地址: http://{host}:{port}")
-    print(f"📖 API文档: http://{host}:{port}/docs")
-    print(f"🔧 控制面板: http://{host}:{port}/panel")
-    print("=" * 60)
-    print("🔗 API端点:")
-    print(f"   OpenAI兼容: http://{host}:{port}/v1")
-    print(f"   Gemini原生: http://{host}:{port}")
-    print("=" * 60)
-    print("⚡ 功能特性:")
-    print("   ✓ OpenAI格式兼容")
-    print("   ✓ Gemini原生格式")  
-    print("   ✓ 429错误自动重试")
-    print("   ✓ 反截断完整输出")
-    print("   ✓ 凭证自动轮换")
-    print("   ✓ 实时管理面板")
-    print("=" * 60)
+    log.info("=" * 60)
+    log.info("🚀 启动 GCLI2API 2.0 - 模块化架构")
+    log.info("=" * 60)
+    log.info(f"📍 服务地址: http://127.0.0.1:{port}")
+    log.info(f"📖 API文档: http://127.0.0.1:{port}/docs")
+    log.info(f"🔧 控制面板: http://127.0.0.1:{port}/auth")
+    log.info("=" * 60)
+    log.info("🔗 API端点:")
+    log.info(f"   OpenAI兼容: http://127.0.0.1:{port}/v1")
+    log.info(f"   Gemini原生: http://127.0.0.1:{port}")
+    log.info("=" * 60)
+    log.info("⚡ 功能特性:")
+    log.info("   ✓ OpenAI格式兼容")
+    log.info("   ✓ Gemini原生格式")
+    log.info("   ✓ 429错误自动重试")
+    log.info("   ✓ 反截断完整输出")
+    log.info("   ✓ 凭证自动轮换")
+    log.info("   ✓ 实时管理面板")
+    log.info("=" * 60)
 
     # 配置hypercorn
     config = Config()

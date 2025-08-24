@@ -1115,3 +1115,178 @@ def batch_upload_credentials(files_data: List[Dict[str, str]]) -> Dict[str, Any]
     }
 
 
+# 环境变量批量导入功能
+def load_credentials_from_env() -> Dict[str, Any]:
+    """
+    从环境变量加载多个凭证文件
+    支持两种环境变量格式:
+    1. GCLI_CREDS_1, GCLI_CREDS_2, ... (编号格式)
+    2. GCLI_CREDS_projectname1, GCLI_CREDS_projectname2, ... (项目名格式)
+    """
+    results = []
+    success_count = 0
+    
+    log.info("开始从环境变量加载认证凭证...")
+    
+    # 获取所有以GCLI_CREDS_开头的环境变量
+    creds_env_vars = {key: value for key, value in os.environ.items() 
+                      if key.startswith('GCLI_CREDS_') and value.strip()}
+    
+    if not creds_env_vars:
+        log.info("未找到GCLI_CREDS_*环境变量")
+        return {
+            'loaded_count': 0,
+            'total_count': 0,
+            'results': [],
+            'message': '未找到GCLI_CREDS_*环境变量'
+        }
+    
+    log.info(f"找到 {len(creds_env_vars)} 个凭证环境变量")
+    
+    for env_name, creds_content in creds_env_vars.items():
+        # 从环境变量名提取标识符
+        identifier = env_name.replace('GCLI_CREDS_', '')
+        
+        try:
+            # 验证JSON格式
+            validation = validate_credential_file(creds_content)
+            if not validation['valid']:
+                result = {
+                    'env_name': env_name,
+                    'identifier': identifier,
+                    'success': False,
+                    'error': validation['error']
+                }
+                results.append(result)
+                log.error(f"环境变量 {env_name} 验证失败: {validation['error']}")
+                continue
+            
+            creds_data = validation['data']
+            project_id = creds_data.get('project_id', 'unknown')
+            
+            # 生成文件名 (使用标识符和项目ID)
+            timestamp = int(time.time())
+            if identifier.isdigit():
+                # 如果标识符是数字，使用项目ID作为主要标识
+                filename = f"env-{project_id}-{identifier}-{timestamp}.json"
+            else:
+                # 如果标识符是项目名，直接使用
+                filename = f"env-{identifier}-{timestamp}.json"
+            
+            # 确保目录存在
+            os.makedirs(CREDENTIALS_DIR, exist_ok=True)
+            file_path = os.path.join(CREDENTIALS_DIR, filename)
+            
+            # 确保文件名唯一
+            counter = 1
+            original_file_path = file_path
+            while os.path.exists(file_path):
+                name, ext = os.path.splitext(original_file_path)
+                file_path = f"{name}-{counter}{ext}"
+                counter += 1
+            
+            # 保存文件
+            with open(file_path, "w", encoding='utf-8') as f:
+                json.dump(creds_data, f, indent=2, ensure_ascii=False)
+            
+            result = {
+                'env_name': env_name,
+                'identifier': identifier,
+                'success': True,
+                'file_path': file_path,
+                'project_id': project_id,
+                'filename': os.path.basename(file_path)
+            }
+            results.append(result)
+            success_count += 1
+            
+            log.info(f"成功从环境变量 {env_name} 保存凭证到: {file_path}")
+            
+        except Exception as e:
+            result = {
+                'env_name': env_name,
+                'identifier': identifier,
+                'success': False,
+                'error': str(e)
+            }
+            results.append(result)
+            log.error(f"处理环境变量 {env_name} 时发生错误: {e}")
+    
+    message = f"成功导入 {success_count}/{len(creds_env_vars)} 个凭证文件"
+    log.info(message)
+    
+    return {
+        'loaded_count': success_count,
+        'total_count': len(creds_env_vars),
+        'results': results,
+        'message': message
+    }
+
+
+def auto_load_env_credentials_on_startup() -> None:
+    """
+    程序启动时自动从环境变量加载凭证
+    如果设置了 AUTO_LOAD_ENV_CREDS=true，则会自动执行
+    """
+    auto_load = os.getenv('AUTO_LOAD_ENV_CREDS', 'false').lower() in ('true', '1', 'yes', 'on')
+    
+    if not auto_load:
+        log.debug("AUTO_LOAD_ENV_CREDS未启用，跳过自动加载")
+        return
+    
+    log.info("AUTO_LOAD_ENV_CREDS已启用，开始自动加载环境变量中的凭证...")
+    
+    try:
+        result = load_credentials_from_env()
+        if result['loaded_count'] > 0:
+            log.info(f"启动时成功自动导入 {result['loaded_count']} 个凭证文件")
+        else:
+            log.info("启动时未找到可导入的环境变量凭证")
+    except Exception as e:
+        log.error(f"启动时自动加载环境变量凭证失败: {e}")
+
+
+def clear_env_credentials() -> Dict[str, Any]:
+    """
+    清除所有从环境变量导入的凭证文件
+    仅删除文件名包含'env-'前缀的文件
+    """
+    if not os.path.exists(CREDENTIALS_DIR):
+        return {
+            'deleted_count': 0,
+            'message': '凭证目录不存在'
+        }
+    
+    deleted_files = []
+    deleted_count = 0
+    
+    try:
+        for filename in os.listdir(CREDENTIALS_DIR):
+            if filename.startswith('env-') and filename.endswith('.json'):
+                file_path = os.path.join(CREDENTIALS_DIR, filename)
+                try:
+                    os.remove(file_path)
+                    deleted_files.append(filename)
+                    deleted_count += 1
+                    log.info(f"删除环境变量凭证文件: {filename}")
+                except Exception as e:
+                    log.error(f"删除文件 {filename} 失败: {e}")
+        
+        message = f"成功删除 {deleted_count} 个环境变量凭证文件"
+        log.info(message)
+        
+        return {
+            'deleted_count': deleted_count,
+            'deleted_files': deleted_files,
+            'message': message
+        }
+        
+    except Exception as e:
+        error_message = f"清除环境变量凭证文件时发生错误: {e}"
+        log.error(error_message)
+        return {
+            'deleted_count': 0,
+            'error': error_message
+        }
+
+

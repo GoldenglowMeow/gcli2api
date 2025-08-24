@@ -545,6 +545,7 @@
             <div class="tabs">
                 <button class="tab active" onclick="switchTab('oauth')">OAuth认证</button>
                 <button class="tab" onclick="switchTab('upload')">批量上传</button>
+                <button class="tab" onclick="switchTab('envload')">环境变量</button>
                 <button class="tab" onclick="switchTab('manage')">文件管理</button>
                 <button class="tab" onclick="switchTab('config')">配置管理</button>
                 <button class="tab" onclick="switchTab('logs')">实时日志</button>
@@ -622,6 +623,75 @@
                             <div class="progress-fill" id="progressFill" style="width: 0%"></div>
                         </div>
                         <p id="progressText">0%</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 环境变量标签页 -->
+            <div id="envloadTab" class="tab-content">
+                <h3>环境变量凭证导入</h3>
+                <p>从环境变量批量导入认证文件，支持部署自动化场景</p>
+                
+                <!-- 环境变量状态信息 -->
+                <div id="envStatusSection">
+                    <div class="loading" id="envStatusLoading">正在检查环境变量状态...</div>
+                    <div id="envStatusContent" class="hidden">
+                        <div class="config-group">
+                            <h4>环境变量状态</h4>
+                            
+                            <div class="form-group">
+                                <label>可用的环境变量:</label>
+                                <div id="envVarsList" class="cred-content"></div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>自动加载设置:</label>
+                                <span id="autoLoadStatus" style="font-weight: bold;"></span>
+                                <small class="config-note">
+                                    要启用自动加载，请设置环境变量 AUTO_LOAD_ENV_CREDS=true
+                                </small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>已导入的环境变量文件:</label>
+                                <span id="envFilesCount" style="font-weight: bold;"></span>
+                                <div id="envFilesList" class="config-note"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 操作按钮 -->
+                <div class="manage-actions">
+                    <button class="btn" onclick="checkEnvCredsStatus()">刷新状态</button>
+                    <button class="btn" onclick="loadEnvCredentials()">从环境变量导入</button>
+                    <button class="btn" style="background-color: #dc3545;" onclick="clearEnvCredentials()">清除环境变量文件</button>
+                </div>
+                
+                <!-- 使用说明 -->
+                <div class="config-group">
+                    <h4>使用说明</h4>
+                    <div class="config-info">
+                        <strong>环境变量格式：</strong>
+                        <ul>
+                            <li><code>GCLI_CREDS_1</code>, <code>GCLI_CREDS_2</code>, ... (编号格式)</li>
+                            <li><code>GCLI_CREDS_项目名1</code>, <code>GCLI_CREDS_项目名2</code>, ... (项目名格式)</li>
+                        </ul>
+                        
+                        <strong>环境变量值：</strong> 完整的认证文件JSON内容
+                        
+                        <br><br>
+                        <strong>示例：</strong>
+                        <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 11px;">
+export GCLI_CREDS_1='{"client_id":"your-client-id","client_secret":"your-secret","refresh_token":"your-token","token_uri":"https://oauth2.googleapis.com/token","project_id":"your-project"}'
+export GCLI_CREDS_myproject='{"client_id":"...","project_id":"myproject",...}'
+export AUTO_LOAD_ENV_CREDS=true  # 启用程序启动时自动导入</pre>
+                        
+                        <strong>Docker部署示例：</strong>
+                        <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 11px;">
+docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
+           -e AUTO_LOAD_ENV_CREDS=true \
+           your-image</pre>
                     </div>
                 </div>
             </div>
@@ -966,6 +1036,10 @@
             if (tabName === 'config') {
                 loadConfig();
             }
+            // 如果切换到环境变量页面，自动检查状态
+            if (tabName === 'envload') {
+                checkEnvCredsStatus();
+            }
             // 如果切换到日志页面，自动连接WebSocket
             if (tabName === 'logs') {
                 connectWebSocket();
@@ -1266,7 +1340,7 @@
 
             try {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${protocol}//${window.location.host}/panel/logs/stream`;
+                const wsUrl = `${protocol}//${window.location.host}/auth/logs/stream`;
                 
                 document.getElementById('connectionStatusText').textContent = '连接中...';
                 document.getElementById('logConnectionStatus').className = 'status info';
@@ -1329,10 +1403,33 @@
             }
         }
 
-        function clearLogs() {
-            allLogs = [];
-            filteredLogs = [];
-            document.getElementById('logContent').textContent = '日志已清空，等待新日志...';
+        async function clearLogs() {
+            try {
+                // 调用后端API清空日志文件
+                const response = await fetch('/auth/logs/clear', {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // 清空前端显示的日志
+                    allLogs = [];
+                    filteredLogs = [];
+                    document.getElementById('logContent').textContent = '日志已清空，等待新日志...';
+                    showStatus(data.message, 'success');
+                } else {
+                    showStatus(`清空日志失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('clearLogs error:', error);
+                // 即使后端清空失败，也清空前端显示
+                allLogs = [];
+                filteredLogs = [];
+                document.getElementById('logContent').textContent = '日志已清空，等待新日志...';
+                showStatus(`清空日志时网络错误: ${error.message}`, 'error');
+            }
         }
 
         function filterLogs() {
@@ -1872,6 +1969,116 @@
                 }
             } catch (error) {
                 console.error('saveConfig error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 环境变量凭证管理相关函数
+        async function checkEnvCredsStatus() {
+            const envStatusLoading = document.getElementById('envStatusLoading');
+            const envStatusContent = document.getElementById('envStatusContent');
+            
+            try {
+                envStatusLoading.style.display = 'block';
+                envStatusContent.classList.add('hidden');
+                
+                const response = await fetch('/auth/env-creds-status', {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // 更新环境变量列表
+                    const envVarsList = document.getElementById('envVarsList');
+                    if (Object.keys(data.available_env_vars).length > 0) {
+                        envVarsList.textContent = Object.keys(data.available_env_vars).join(', ');
+                    } else {
+                        envVarsList.textContent = '未找到GCLI_CREDS_*环境变量';
+                    }
+                    
+                    // 更新自动加载状态
+                    const autoLoadStatus = document.getElementById('autoLoadStatus');
+                    autoLoadStatus.textContent = data.auto_load_enabled ? '✅ 已启用' : '❌ 未启用';
+                    autoLoadStatus.style.color = data.auto_load_enabled ? '#28a745' : '#dc3545';
+                    
+                    // 更新已导入文件统计
+                    const envFilesCount = document.getElementById('envFilesCount');
+                    envFilesCount.textContent = `${data.existing_env_files_count} 个文件`;
+                    
+                    const envFilesList = document.getElementById('envFilesList');
+                    if (data.existing_env_files.length > 0) {
+                        envFilesList.textContent = data.existing_env_files.join(', ');
+                    } else {
+                        envFilesList.textContent = '无';
+                    }
+                    
+                    envStatusContent.classList.remove('hidden');
+                    showStatus('环境变量状态检查完成', 'success');
+                } else {
+                    showStatus(`获取环境变量状态失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('checkEnvCredsStatus error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            } finally {
+                envStatusLoading.style.display = 'none';
+            }
+        }
+
+        async function loadEnvCredentials() {
+            try {
+                showStatus('正在从环境变量导入凭证...', 'info');
+                
+                const response = await fetch('/auth/load-env-creds', {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (data.loaded_count > 0) {
+                        showStatus(`✅ 成功导入 ${data.loaded_count}/${data.total_count} 个凭证文件`, 'success');
+                        // 刷新状态
+                        setTimeout(() => checkEnvCredsStatus(), 1000);
+                    } else {
+                        showStatus(`⚠️ ${data.message}`, 'info');
+                    }
+                } else {
+                    showStatus(`导入失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('loadEnvCredentials error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function clearEnvCredentials() {
+            if (!confirm('确定要清除所有从环境变量导入的凭证文件吗？\n这将删除所有文件名以 "env-" 开头的认证文件。')) {
+                return;
+            }
+            
+            try {
+                showStatus('正在清除环境变量凭证文件...', 'info');
+                
+                const response = await fetch('/auth/env-creds', {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus(`✅ 成功删除 ${data.deleted_count} 个环境变量凭证文件`, 'success');
+                    // 刷新状态
+                    setTimeout(() => checkEnvCredsStatus(), 1000);
+                } else {
+                    showStatus(`清除失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('clearEnvCredentials error:', error);
                 showStatus(`网络错误: ${error.message}`, 'error');
             }
         }

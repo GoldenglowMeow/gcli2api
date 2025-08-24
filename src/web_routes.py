@@ -6,10 +6,9 @@ import os
 from log import log
 import json
 import asyncio
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -17,16 +16,12 @@ from .auth_api import (
     create_auth_url, get_auth_status,
     verify_password, generate_auth_token, verify_auth_token,
     batch_upload_credentials, asyncio_complete_auth_flow, 
+    load_credentials_from_env, auto_load_env_credentials_on_startup, clear_env_credentials
 )
 from .credential_manager import CredentialManager
 from config import (
-    get_config_value, save_config_to_toml, reload_config_cache,
-    get_calls_per_rotation, get_http_timeout, get_max_connections,
-    get_auto_ban_enabled, get_auto_ban_error_codes,
-    get_retry_429_max_retries, get_retry_429_enabled, get_retry_429_interval,
-    get_proxy_config
+    get_config_value
 )
-from log import log
 
 # 创建路由器
 router = APIRouter()
@@ -105,10 +100,9 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=401, detail="无效的认证令牌")
     return credentials.credentials
 
-
 @router.get("/auth", response_class=HTMLResponse)
-async def serve_auth_page():
-    """提供认证页面（重定向到控制面板）"""
+async def serve_control_panel():
+    """提供统一控制面板（包含认证、文件管理、配置等功能）"""
     try:
         # 读取统一的控制面板HTML文件
         html_file_path = "front/control_panel.html"
@@ -515,6 +509,29 @@ async def get_config(token: str = Depends(verify_token)):
         current_config.setdefault("retry_429_enabled", True)
         current_config.setdefault("retry_429_interval", 0.1)
         
+        # 日志配置
+        if os.getenv("LOG_LEVEL"):
+            current_config["log_level"] = os.getenv("LOG_LEVEL")
+            env_locked.append("log_level")
+        else:
+            current_config.setdefault("log_level", "info")
+        
+        if os.getenv("LOG_FILE"):
+            current_config["log_file"] = os.getenv("LOG_FILE")
+            env_locked.append("log_file")
+        else:
+            current_config.setdefault("log_file", "log.txt")
+        
+        # 抗截断配置
+        if os.getenv("ANTI_TRUNCATION_MAX_ATTEMPTS"):
+            try:
+                current_config["anti_truncation_max_attempts"] = int(os.getenv("ANTI_TRUNCATION_MAX_ATTEMPTS"))
+                env_locked.append("anti_truncation_max_attempts")
+            except ValueError:
+                current_config.setdefault("anti_truncation_max_attempts", 3)
+        else:
+            current_config.setdefault("anti_truncation_max_attempts", 3)
+        
         return JSONResponse(content={
             "config": current_config,
             "env_locked": env_locked
@@ -557,6 +574,24 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             if not isinstance(new_config["retry_429_enabled"], bool):
                 raise HTTPException(status_code=400, detail="429重试开关必须是布尔值")
         
+        # 验证新的配置项
+        if "retry_429_interval" in new_config:
+            try:
+                interval = float(new_config["retry_429_interval"])
+                if interval < 0.01 or interval > 10:
+                    raise HTTPException(status_code=400, detail="429重试间隔必须在0.01-10秒之间")
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="429重试间隔必须是有效的数字")
+        
+        if "log_level" in new_config:
+            valid_levels = ["debug", "info", "warning", "error", "critical"]
+            if new_config["log_level"].lower() not in valid_levels:
+                raise HTTPException(status_code=400, detail=f"日志级别必须是以下之一: {', '.join(valid_levels)}")
+        
+        if "anti_truncation_max_attempts" in new_config:
+            if not isinstance(new_config["anti_truncation_max_attempts"], int) or new_config["anti_truncation_max_attempts"] < 1 or new_config["anti_truncation_max_attempts"] > 10:
+                raise HTTPException(status_code=400, detail="抗截断最大重试次数必须是1-10之间的整数")
+        
         # 读取现有的配置文件
         config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
         existing_config = {}
@@ -582,6 +617,14 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             env_locked_keys.add("retry_429_max_retries")
         if os.getenv("RETRY_429_ENABLED"):
             env_locked_keys.add("retry_429_enabled")
+        if os.getenv("RETRY_429_INTERVAL"):
+            env_locked_keys.add("retry_429_interval")
+        if os.getenv("LOG_LEVEL"):
+            env_locked_keys.add("log_level")
+        if os.getenv("LOG_FILE"):
+            env_locked_keys.add("log_file")
+        if os.getenv("ANTI_TRUNCATION_MAX_ATTEMPTS"):
+            env_locked_keys.add("anti_truncation_max_attempts")
         
         for key, value in new_config.items():
             if key not in env_locked_keys:
@@ -630,17 +673,118 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/auth/load-env-creds")
+async def load_env_credentials(token: str = Depends(verify_token)):
+    """从环境变量加载凭证文件"""
+    try:
+        result = load_credentials_from_env()
+        
+        if result['loaded_count'] > 0:
+            return JSONResponse(content={
+                "loaded_count": result['loaded_count'],
+                "total_count": result['total_count'],
+                "results": result['results'],
+                "message": result['message']
+            })
+        else:
+            return JSONResponse(content={
+                "loaded_count": 0,
+                "total_count": result['total_count'],
+                "message": result['message'],
+                "results": result['results']
+            })
+            
+    except Exception as e:
+        log.error(f"从环境变量加载凭证失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/auth/env-creds")
+async def clear_env_creds(token: str = Depends(verify_token)):
+    """清除所有从环境变量导入的凭证文件"""
+    try:
+        result = clear_env_credentials()
+        
+        if 'error' in result:
+            raise HTTPException(status_code=500, detail=result['error'])
+        
+        return JSONResponse(content={
+            "deleted_count": result['deleted_count'],
+            "deleted_files": result.get('deleted_files', []),
+            "message": result['message']
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"清除环境变量凭证失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/auth/env-creds-status")
+async def get_env_creds_status(token: str = Depends(verify_token)):
+    """获取环境变量凭证状态"""
+    try:
+        # 检查有哪些环境变量可用
+        available_env_vars = {key: "***已设置***" for key, value in os.environ.items() 
+                              if key.startswith('GCLI_CREDS_') and value.strip()}
+        
+        # 检查自动加载设置
+        auto_load_enabled = os.getenv('AUTO_LOAD_ENV_CREDS', 'false').lower() in ('true', '1', 'yes', 'on')
+        
+        # 统计已存在的环境变量凭证文件
+        from config import CREDENTIALS_DIR
+        existing_env_files = []
+        if os.path.exists(CREDENTIALS_DIR):
+            for filename in os.listdir(CREDENTIALS_DIR):
+                if filename.startswith('env-') and filename.endswith('.json'):
+                    existing_env_files.append(filename)
+        
+        return JSONResponse(content={
+            "available_env_vars": available_env_vars,
+            "auto_load_enabled": auto_load_enabled,
+            "existing_env_files_count": len(existing_env_files),
+            "existing_env_files": existing_env_files
+        })
+        
+    except Exception as e:
+        log.error(f"获取环境变量凭证状态失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # =============================================================================
 # 实时日志WebSocket (Real-time Logs WebSocket)
 # =============================================================================
 
-@router.websocket("/panel/logs/stream")
+@router.post("/auth/logs/clear")
+async def clear_logs(token: str = Depends(verify_token)):
+    """清空日志文件"""
+    try:
+        import config
+        log_file_path = config.get_log_file()
+        
+        # 检查日志文件是否存在
+        if os.path.exists(log_file_path):
+            # 清空文件内容（保留文件）
+            with open(log_file_path, 'w', encoding='utf-8') as f:
+                f.write('')
+            log.info(f"日志文件已清空: {log_file_path}")
+            return JSONResponse(content={"message": f"日志文件已清空: {os.path.basename(log_file_path)}"})
+        else:
+            return JSONResponse(content={"message": "日志文件不存在"})
+            
+    except Exception as e:
+        log.error(f"清空日志文件失败: {e}")
+        raise HTTPException(status_code=500, detail=f"清空日志文件失败: {str(e)}")
+
+@router.websocket("/auth/logs/stream")
 async def websocket_logs(websocket: WebSocket):
     """WebSocket端点，用于实时日志流"""
     await manager.connect(websocket)
     try:
-        # 发送最近的日志
-        log_file_path = "log.txt"
+        # 从配置获取日志文件路径
+        import config
+        log_file_path = config.get_log_file()
         if os.path.exists(log_file_path):
             try:
                 with open(log_file_path, "r", encoding="utf-8") as f:
