@@ -1,5 +1,5 @@
 """
-429 Retry Module - Handles automatic retry for non-quota 429 errors
+429 Retry Module - Handles automatic retry for 429 errors
 根据修改指导要求，负责429错误的自动重试逻辑
 """
 import asyncio

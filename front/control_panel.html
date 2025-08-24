@@ -234,10 +234,6 @@
             border-color: #ccc;
             opacity: 0.7;
         }
-        .cred-card.cd {
-            background-color: #fff3cd;
-            border-color: #ffeaa7;
-        }
         .cred-header {
             display: flex;
             justify-content: space-between;
@@ -265,10 +261,6 @@
         }
         .status-badge.disabled {
             background-color: #6c757d;
-        }
-        .status-badge.cd {
-            background-color: #ffc107;
-            color: #212529;
         }
         .error-codes {
             background-color: #f8d7da;
@@ -366,7 +358,6 @@
         }
         .stat-item.total { border-left: 4px solid #007bff; }
         .stat-item.normal { border-left: 4px solid #28a745; }
-        .stat-item.cd { border-left: 4px solid #ffc107; }
         .stat-item.disabled { border-left: 4px solid #6c757d; }
         
         .filter-container {
@@ -711,10 +702,6 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                         <span class="stat-number" id="statNormal">0</span>
                         <span class="stat-label">正常</span>
                     </div>
-                    <div class="stat-item cd">
-                        <span class="stat-number" id="statCd">0</span>
-                        <span class="stat-label">CD中</span>
-                    </div>
                     <div class="stat-item disabled">
                         <span class="stat-number" id="statDisabled">0</span>
                         <span class="stat-label">禁用</span>
@@ -732,7 +719,6 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                     <select id="statusFilter" class="filter-select" onchange="applyFilters()">
                         <option value="all">全部</option>
                         <option value="normal">正常</option>
-                        <option value="cd">CD中</option>
                         <option value="disabled">禁用</option>
                     </select>
                     
@@ -956,7 +942,6 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         let statsData = {
             total: 0,
             normal: 0,
-            cd: 0,
             disabled: 0
         };
 
@@ -1509,7 +1494,6 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             statsData = {
                 total: 0,
                 normal: 0,
-                cd: 0,
                 disabled: 0
             };
             
@@ -1518,8 +1502,6 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 
                 if (credInfo.status.disabled) {
                     statsData.disabled++;
-                } else if (credInfo.status.in_cd) {
-                    statsData.cd++;
                 } else {
                     statsData.normal++;
                 }
@@ -1530,7 +1512,6 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         function updateStatsDisplay() {
             document.getElementById('statTotal').textContent = statsData.total;
             document.getElementById('statNormal').textContent = statsData.normal;
-            document.getElementById('statCd').textContent = statsData.cd;
             document.getElementById('statDisabled').textContent = statsData.disabled;
         }
         
@@ -1548,10 +1529,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                         shouldInclude = true;
                         break;
                     case 'normal':
-                        shouldInclude = !credInfo.status.disabled && !credInfo.status.in_cd;
-                        break;
-                    case 'cd':
-                        shouldInclude = credInfo.status.in_cd;
+                        shouldInclude = !credInfo.status.disabled;
                         break;
                     case 'disabled':
                         shouldInclude = credInfo.status.disabled;
@@ -1651,7 +1629,6 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             // 设置卡片状态样式
             let cardClass = 'cred-card';
             if (status.disabled) cardClass += ' disabled';
-            if (status.in_cd) cardClass += ' cd';
             
             div.className = cardClass;
             
@@ -1663,9 +1640,6 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 statusBadges += '<span class="status-badge enabled">已启用</span>';
             }
             
-            if (status.in_cd) {
-                statusBadges += '<span class="status-badge cd">CD中</span>';
-            }
             
             // 调试：记录 error_codes
             console.log(`Error codes for ${filename}:`, status.error_codes);

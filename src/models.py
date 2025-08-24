@@ -220,7 +220,5 @@ class AuthResponse(BaseModel):
 
 class CredentialStatus(BaseModel):
     disabled: bool = False
-    in_cd: bool = False
     error_codes: List[int] = []
     last_success: Optional[str] = None
-    cd_until: Optional[str] = None
