@@ -130,7 +130,6 @@ if __name__ == "__main__":
     log.info("🚀 启动 GCLI2API 2.0 - 模块化架构")
     log.info("=" * 60)
     log.info(f"📍 服务地址: http://127.0.0.1:{port}")
-    log.info(f"📖 API文档: http://127.0.0.1:{port}/docs")
     log.info(f"🔧 控制面板: http://127.0.0.1:{port}/auth")
     log.info("=" * 60)
     log.info("🔗 API端点:")
