@@ -53,13 +53,6 @@ async def lifespan(app: FastAPI):
     if global_credential_manager:
         await global_credential_manager.close()
     
-    try:
-        from src.auth_api import stop_oauth_server
-        stop_oauth_server()
-        log.info("OAuth回调服务器已停止")
-    except Exception as e:
-        log.warning(f"停止OAuth回调服务器时出错: {e}")
-    
     log.info("GCLI2API 主服务已停止")
 
 # 创建FastAPI应用

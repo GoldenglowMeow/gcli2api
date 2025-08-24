@@ -9,7 +9,6 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Path, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .models import ModelList, Model
 from .google_api_client import send_gemini_request, build_gemini_payload_from_native
 from .credential_manager import CredentialManager
 from .retry_429 import retry_429_wrapper
@@ -42,12 +41,37 @@ def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
     return token
 
-@router.get("/v1beta/models", response_model=ModelList)
-@router.get("/v1/models", response_model=ModelList)
+@router.get("/v1beta/models")
+@router.get("/v1/models")
 async def list_gemini_models():
     """返回Gemini格式的模型列表"""
     models = get_available_models("gemini")
-    return ModelList(data=[Model(id=m) for m in models])
+    
+    # 构建符合Gemini API格式的模型列表
+    gemini_models = []
+    for model_name in models:
+        # 获取基础模型名
+        base_model = get_base_model_from_feature_model(model_name)
+        
+        model_info = {
+            "name": f"models/{model_name}",
+            "baseModelId": base_model,
+            "version": "001",
+            "displayName": model_name,
+            "description": f"Gemini {base_model} model",
+            "inputTokenLimit": 1000000,
+            "outputTokenLimit": 8192,
+            "supportedGenerationMethods": ["generateContent", "streamGenerateContent"],
+            "temperature": 1.0,
+            "maxTemperature": 2.0,
+            "topP": 0.95,
+            "topK": 64
+        }
+        gemini_models.append(model_info)
+    
+    return JSONResponse(content={
+        "models": gemini_models
+    })
 
 @router.post("/v1beta/models/{model}:generateContent")
 @router.post("/v1/models/{model}:generateContent")
@@ -71,15 +95,13 @@ async def generate_content(
         raise HTTPException(status_code=400, detail="Missing required field: contents")
     
     # 处理模型名称和功能检测
-    use_fake_streaming = is_fake_streaming_model(model)
     use_anti_truncation = is_anti_truncation_model(model)
     
     # 获取基础模型名
     real_model = get_base_model_from_feature_model(model)
     
-    # 对于假流式模型，返回假流式响应
-    if use_fake_streaming:
-        return await fake_stream_response_gemini(request_data, real_model)
+    # 对于假流式模型，如果是流式端点才返回假流式响应
+    # 注意：这是generateContent端点，不应该触发假流式
     
     # 对于抗截断模型的非流式请求，给出警告
     if use_anti_truncation:
@@ -171,9 +193,9 @@ async def stream_generate_content(
     # 获取基础模型名
     real_model = get_base_model_from_feature_model(model)
     
-    # 假流式模型不应该到达这个流式端点，但防御性处理
+    # 对于假流式模型，返回假流式响应
     if use_fake_streaming:
-        log.warning("假流式模型不应使用流式端点，将按普通流式处理")
+        return await fake_stream_response_gemini(request_data, real_model)
     
     # 获取凭证管理器
     async with get_credential_manager() as cred_mgr:
