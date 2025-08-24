@@ -896,6 +896,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 <div class="manage-actions">
                     <button class="refresh-btn" onclick="connectWebSocket()">连接日志流</button>
                     <button class="btn" style="background-color: #dc3545;" onclick="disconnectWebSocket()">断开连接</button>
+                    <button class="btn" style="background-color: #28a745;" onclick="downloadLogs()">下载日志</button>
                     <button class="btn" style="background-color: #6c757d;" onclick="clearLogs()">清空日志</button>
                 </div>
                 
@@ -1393,6 +1394,54 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             allLogs = [];
             filteredLogs = [];
             document.getElementById('logContent').textContent = '日志已清空，等待新日志...';
+        }
+
+        async function downloadLogs() {
+            try {
+                // 调用后端API下载日志文件
+                const response = await fetch('/auth/logs/download', {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                if (response.ok) {
+                    // 获取文件名
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'gcli2api_logs.txt';
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename=(.+)/);
+                        if (filenameMatch) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+                    
+                    // 下载文件
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    showStatus(`日志文件下载成功: ${filename}`, 'success');
+                } else {
+                    const errorText = await response.text();
+                    let errorMsg = '下载失败';
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        errorMsg = errorData.detail || errorData.error || '未知错误';
+                    } catch (e) {
+                        errorMsg = errorText || '未知错误';
+                    }
+                    showStatus(`下载日志失败: ${errorMsg}`, 'error');
+                }
+            } catch (error) {
+                console.error('downloadLogs error:', error);
+                showStatus(`下载日志时网络错误: ${error.message}`, 'error');
+            }
         }
 
         async function clearLogs() {

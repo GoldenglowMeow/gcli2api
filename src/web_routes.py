@@ -8,7 +8,7 @@ import json
 import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -776,6 +776,42 @@ async def clear_logs(token: str = Depends(verify_token)):
     except Exception as e:
         log.error(f"清空日志文件失败: {e}")
         raise HTTPException(status_code=500, detail=f"清空日志文件失败: {str(e)}")
+
+@router.get("/auth/logs/download")
+async def download_logs(token: str = Depends(verify_token)):
+    """下载日志文件"""
+    try:
+        import config
+        log_file_path = config.get_log_file()
+        
+        # 检查日志文件是否存在
+        if not os.path.exists(log_file_path):
+            raise HTTPException(status_code=404, detail="日志文件不存在")
+        
+        # 检查文件是否为空
+        file_size = os.path.getsize(log_file_path)
+        if file_size == 0:
+            raise HTTPException(status_code=404, detail="日志文件为空")
+        
+        # 生成文件名（包含时间戳）
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"gcli2api_logs_{timestamp}.txt"
+        
+        log.info(f"下载日志文件: {log_file_path}")
+        
+        return FileResponse(
+            path=log_file_path,
+            filename=filename,
+            media_type='text/plain',
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"下载日志文件失败: {e}")
+        raise HTTPException(status_code=500, detail=f"下载日志文件失败: {str(e)}")
 
 @router.websocket("/auth/logs/stream")
 async def websocket_logs(websocket: WebSocket):
