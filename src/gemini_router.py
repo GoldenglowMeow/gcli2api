@@ -129,6 +129,21 @@ async def generate_content(
     if "contents" not in request_data or not request_data["contents"]:
         raise HTTPException(status_code=400, detail="Missing required field: contents")
     
+    # 请求预处理：限制参数
+    if "generationConfig" in request_data and request_data["generationConfig"]:
+        generation_config = request_data["generationConfig"]
+        
+        # 限制max_tokens (在Gemini中叫maxOutputTokens)
+        if "maxOutputTokens" in generation_config and generation_config["maxOutputTokens"] is not None:
+            if generation_config["maxOutputTokens"] > 65535:
+                generation_config["maxOutputTokens"] = 65535
+                
+        # 覆写 top_k 为 64 (在Gemini中叫topK)
+        generation_config["topK"] = 64
+    else:
+        # 如果没有generationConfig，创建一个并设置topK
+        request_data["generationConfig"] = {"topK": 64}
+    
     # 处理模型名称和功能检测
     use_anti_truncation = is_anti_truncation_model(model)
     
@@ -222,6 +237,21 @@ async def stream_generate_content(
     # 验证必要字段
     if "contents" not in request_data or not request_data["contents"]:
         raise HTTPException(status_code=400, detail="Missing required field: contents")
+    
+    # 请求预处理：限制参数
+    if "generationConfig" in request_data and request_data["generationConfig"]:
+        generation_config = request_data["generationConfig"]
+        
+        # 限制max_tokens (在Gemini中叫maxOutputTokens)
+        if "maxOutputTokens" in generation_config and generation_config["maxOutputTokens"] is not None:
+            if generation_config["maxOutputTokens"] > 65535:
+                generation_config["maxOutputTokens"] = 65535
+                
+        # 覆写 top_k 为 64 (在Gemini中叫topK)
+        generation_config["topK"] = 64
+    else:
+        # 如果没有generationConfig，创建一个并设置topK
+        request_data["generationConfig"] = {"topK": 64}
     
     # 处理模型名称和功能检测
     use_fake_streaming = is_fake_streaming_model(model)
