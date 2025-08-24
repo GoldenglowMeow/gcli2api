@@ -13,7 +13,7 @@ CODE_ASSIST_ENDPOINT = os.getenv("CODE_ASSIST_ENDPOINT", "https://cloudcode-pa.g
 CLI_VERSION = "0.1.5"  # Match current gemini-cli version
 
 # 凭证目录
-CREDENTIALS_DIR = "geminicli/creds"
+CREDENTIALS_DIR = "./creds"
 
 # 自动封禁配置
 AUTO_BAN_ENABLED = os.getenv("AUTO_BAN", "false").lower() in ("true", "1", "yes", "on")

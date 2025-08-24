@@ -122,7 +122,7 @@ bash start.sh
 
 **Docker 运行命令**
 ```bash
-docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(pwd)/data/creds:/app/geminicli/creds ghcr.io/cetaceang/gcli2api:latest
+docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(pwd)/data/creds:/app/creds ghcr.io/cetaceang/gcli2api:latest
 ```
 
 **Docker Compose 运行命令**
@@ -140,7 +140,7 @@ docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(p
           - PASSWORD=pwd
           - PORT=7861
         volumes:
-          - ./data/creds:/app/geminicli/creds
+          - ./data/creds:/app/creds
         healthcheck:
           test: ["CMD-SHELL", "python -c \"import sys, urllib.request, os; port = os.environ.get('PORT', '7861'); req = urllib.request.Request(f'http://localhost:{port}/v1/models', headers={'Authorization': 'Bearer ' + os.environ.get('PASSWORD', 'pwd')}); sys.exit(0 if urllib.request.urlopen(req, timeout=5).getcode() == 200 else 1)\""]
           interval: 30s
