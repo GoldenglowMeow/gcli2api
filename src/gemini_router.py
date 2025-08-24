@@ -103,7 +103,7 @@ async def generate_content(
     # 获取凭证管理器
     async with get_credential_manager() as cred_mgr:
         # 获取凭证
-        creds = await cred_mgr.get_credentials_and_project()
+        creds, project_id = await cred_mgr.get_credentials_and_project()
         if not creds:
             log.error("No credentials available")
             raise HTTPException(status_code=500, detail="No credentials available")
@@ -322,7 +322,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str):
             # 获取凭证管理器
             async with get_credential_manager() as cred_mgr:
                 # 获取凭证
-                creds = await cred_mgr.get_credentials_and_project()
+                creds, project_id = await cred_mgr.get_credentials_and_project()
                 if not creds:
                     log.error("No credentials available")
                     error_chunk = {
