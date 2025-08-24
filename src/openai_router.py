@@ -219,8 +219,22 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: CredentialMan
             
             try:
                 response_data = json.loads(body_str)
-                if "choices" in response_data and response_data["choices"]:
+                log.debug(f"Fake stream response data: {response_data}")
+                
+                # 从Gemini响应中提取内容
+                content = ""
+                if "candidates" in response_data and response_data["candidates"]:
+                    # Gemini格式响应
+                    candidate = response_data["candidates"][0]
+                    if "content" in candidate and "parts" in candidate["content"]:
+                        content = candidate["content"]["parts"][0].get("text", "")
+                elif "choices" in response_data and response_data["choices"]:
+                    # OpenAI格式响应
                     content = response_data["choices"][0].get("message", {}).get("content", "")
+                
+                log.debug(f"Extracted content: {content}")
+                
+                if content:
                     content_chunk = {
                         "choices": [{
                             "index": 0,
@@ -230,6 +244,7 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: CredentialMan
                     }
                     yield f"data: {json.dumps(content_chunk)}\n\n".encode()
                 else:
+                    log.warning(f"No content found in response: {response_data}")
                     yield f"data: {body_str}\n\n".encode()
             except json.JSONDecodeError:
                 error_chunk = {
