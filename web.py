@@ -93,24 +93,6 @@ app.include_router(
     tags=["Web Interface"]
 )
 
-@app.get("/")
-async def root():
-    """根路径 - 服务状态信息"""
-    return {
-        "service": "GCLI2API",
-        "status": "running",
-        "endpoints": {
-            "openai_api": "/v1/chat/completions",
-            "openai_models": "/v1/models", 
-            "gemini_api": "/v1/models/{model}:generateContent",
-            "gemini_streaming": "/v1/models/{model}:streamGenerateContent",
-            "gemini_models": "/v1/models",
-            "control_panel": "/auth",
-        },
-        "docs": "/docs",
-        "credential_manager": "initialized" if global_credential_manager else "failed"
-    }
-
 def get_credential_manager():
     """获取全局凭证管理器实例"""
     return global_credential_manager

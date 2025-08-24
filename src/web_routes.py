@@ -19,9 +19,7 @@ from .auth_api import (
     load_credentials_from_env, clear_env_credentials
 )
 from .credential_manager import CredentialManager
-from config import (
-    get_config_value
-)
+import config
 
 # 创建路由器
 router = APIRouter()
@@ -101,6 +99,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=401, detail="无效的认证令牌")
     return credentials.credentials
 
+@router.get("/", response_class=HTMLResponse)
 @router.get("/auth", response_class=HTMLResponse)
 async def serve_control_panel():
     """提供统一控制面板（包含认证、文件管理、配置等功能）"""
