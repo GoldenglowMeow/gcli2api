@@ -142,7 +142,7 @@ async def chat_completions(
         # 处理假流式
         if use_fake_streaming and getattr(request_data, "stream", False):
             request_data.stream = False
-            return await fake_stream_response(api_payload, creds, cred_mgr, model)
+            return await fake_stream_response(api_payload, creds, cred_mgr, real_model)
         
         # 处理抗截断 (仅流式传输时有效)
         is_streaming = getattr(request_data, "stream", False)

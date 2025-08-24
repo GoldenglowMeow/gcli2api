@@ -5,9 +5,10 @@ Gemini Router - Handles native Gemini format API requests
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, HTTPException, Depends, Request, Path, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Path, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, StreamingResponse
+from typing import Optional
 
 from .google_api_client import send_gemini_request, build_gemini_payload_from_native
 from .credential_manager import CredentialManager
@@ -34,12 +35,22 @@ async def get_credential_manager():
     yield credential_manager
 
 def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """验证用户密码"""
+    """验证用户密码（Bearer Token方式）"""
     password = get_config_value("password", "pwd", "PASSWORD")
     token = credentials.credentials
     if token != password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
     return token
+
+def authenticate_gemini_api_key(x_goog_api_key: Optional[str] = Header(None)) -> str:
+    """验证Gemini API Key（x-goog-api-key头部方式）"""
+    if not x_goog_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing x-goog-api-key header")
+    
+    password = get_config_value("password", "pwd", "PASSWORD")
+    if x_goog_api_key != password:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key")
+    return x_goog_api_key
 
 @router.get("/v1beta/models")
 @router.get("/v1/models")
@@ -78,10 +89,9 @@ async def list_gemini_models():
 async def generate_content(
     model: str = Path(..., description="Model name"),
     request: Request = None,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    api_key: str = Depends(authenticate_gemini_api_key)
 ):
     """处理Gemini格式的内容生成请求（非流式）"""
-    token = authenticate(credentials)
     
     # 获取原始请求数据
     try:
@@ -170,10 +180,9 @@ async def generate_content(
 async def stream_generate_content(
     model: str = Path(..., description="Model name"),
     request: Request = None,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    api_key: str = Depends(authenticate_gemini_api_key)
 ):
     """处理Gemini格式的流式内容生成请求"""
-    token = authenticate(credentials)
     
     # 获取原始请求数据
     try:
@@ -242,10 +251,9 @@ async def stream_generate_content(
 @router.get("/v1/models/{model}")
 async def get_model_info(
     model: str = Path(..., description="Model name"),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    api_key: str = Depends(authenticate_gemini_api_key)
 ):
     """获取特定模型的信息"""
-    token = authenticate(credentials)
     
     # 获取基础模型名称
     base_model = get_base_model_name(model)
