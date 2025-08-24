@@ -14,7 +14,7 @@ from .google_api_client import send_gemini_request, build_gemini_payload_from_na
 from .credential_manager import CredentialManager
 from .retry_429 import retry_429_wrapper
 from config import get_config_value, get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
-from .anti_truncation import apply_anti_truncation, apply_anti_truncation_to_stream
+from .anti_truncation import apply_anti_truncation_to_stream
 from config import get_base_model_name
 from log import log
 
@@ -383,26 +383,36 @@ async def fake_stream_response_gemini(request_data: dict, model: str):
                     else:
                         response_data = json.loads(str(response))
                     
+                    log.debug(f"Gemini fake stream response data: {response_data}")
+                    
                     # 发送完整内容作为单个chunk
                     if "candidates" in response_data and response_data["candidates"]:
                         candidate = response_data["candidates"][0]
                         if "content" in candidate and "parts" in candidate["content"]:
                             content = candidate["content"]["parts"][0].get("text", "")
-                            content_chunk = {
-                                "candidates": [{
-                                    "content": {
-                                        "parts": [{"text": content}],
-                                        "role": "model"
-                                    },
-                                    "finishReason": candidate.get("finishReason", "STOP"),
-                                    "index": 0
-                                }]
-                            }
-                            yield f"data: {json.dumps(content_chunk)}\n\n".encode()
+                            log.debug(f"Gemini extracted content: {content}")
+                            
+                            if content:
+                                content_chunk = {
+                                    "candidates": [{
+                                        "content": {
+                                            "parts": [{"text": content}],
+                                            "role": "model"
+                                        },
+                                        "finishReason": candidate.get("finishReason", "STOP"),
+                                        "index": 0
+                                    }]
+                                }
+                                yield f"data: {json.dumps(content_chunk)}\n\n".encode()
+                            else:
+                                log.warning(f"No content found in Gemini candidate: {candidate}")
+                                yield f"data: {json.dumps(response_data)}\n\n".encode()
                         else:
+                            log.warning(f"No content/parts found in Gemini candidate: {candidate}")
                             # 返回原始响应
                             yield f"data: {json.dumps(response_data)}\n\n".encode()
                     else:
+                        log.warning(f"No candidates found in Gemini response: {response_data}")
                         yield f"data: {json.dumps(response_data)}\n\n".encode()
                     
                 except Exception as e:
