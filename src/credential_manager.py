@@ -194,7 +194,8 @@ class CredentialManager:
         self._creds_state[relative_filename] = {
             "error_codes": [],
             "disabled": False,
-            "last_success": None
+            "last_success": None,
+            "user_email": None
         }
         return self._creds_state[relative_filename]
 
@@ -247,6 +248,74 @@ class CredentialManager:
             
             await self._save_state()
 
+    async def fetch_user_email(self, filename: str) -> Optional[str]:
+        """获取凭证对应的用户邮箱地址"""
+        try:
+            # 加载凭证
+            creds, _ = await self._load_credentials_from_file(filename)
+            if not creds or not creds.token:
+                log.warning(f"无法加载凭证或获取访问令牌: {filename}")
+                return None
+            
+            # 刷新令牌如果需要
+            if creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(GoogleAuthRequest())
+                except Exception as e:
+                    log.warning(f"刷新凭证失败 {filename}: {e}")
+                    return None
+            
+            # 调用Google userinfo API获取邮箱
+            if not self._http_client:
+                log.warning("HTTP客户端未初始化")
+                return None
+                
+            headers = {
+                "Authorization": f"Bearer {creds.token}",
+                "Accept": "application/json"
+            }
+            
+            response = await self._http_client.get(
+                "https://openidconnect.googleapis.com/v1/userinfo",
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                user_info = response.json()
+                email = user_info.get("email")
+                if email:
+                    log.info(f"成功获取邮箱地址: {email} for {os.path.basename(filename)}")
+                    return email
+                else:
+                    log.warning(f"userinfo响应中没有邮箱信息: {user_info}")
+                    return None
+            else:
+                log.warning(f"获取用户信息失败 {filename}: HTTP {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            log.error(f"获取用户邮箱失败 {filename}: {e}")
+            return None
+
+    async def get_or_fetch_user_email(self, filename: str) -> Optional[str]:
+        """获取用户邮箱（优先使用缓存，如果没有则从API获取）"""
+        async with self._lock:
+            cred_state = self._get_cred_state(filename)
+            
+            # 检查是否已经有邮箱信息
+            if "user_email" in cred_state and cred_state["user_email"]:
+                return cred_state["user_email"]
+        
+        # 从API获取邮箱
+        email = await self.fetch_user_email(filename)
+        if email:
+            async with self._lock:
+                cred_state = self._get_cred_state(filename)
+                cred_state["user_email"] = email
+                await self._save_state()
+        
+        return email
+
 
     def is_cred_disabled(self, filename: str) -> bool:
         """检查凭证是否被禁用"""
@@ -295,7 +364,8 @@ class CredentialManager:
             file_status = {
                 "error_codes": cred_state.get("error_codes", []),
                 "disabled": cred_state.get("disabled", False),
-                "last_success": cred_state.get("last_success")
+                "last_success": cred_state.get("last_success"),
+                "user_email": cred_state.get("user_email")
             }
             status[absolute_filename] = file_status
             

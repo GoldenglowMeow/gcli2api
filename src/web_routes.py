@@ -298,7 +298,8 @@ async def get_creds_status(token: str = Depends(verify_token)):
                     "content": content,
                     "filename": os.path.basename(filename),
                     "size": os.path.getsize(filename),
-                    "modified_time": os.path.getmtime(filename)
+                    "modified_time": os.path.getmtime(filename),
+                    "user_email": file_status.get("user_email")
                 }
             except Exception as e:
                 log.error(f"读取凭证文件失败 {filename}: {e}")
@@ -535,6 +536,96 @@ async def download_cred_file(filename: str, token: str = Depends(verify_token)):
         log.error(f"下载凭证文件失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/creds/fetch-email/{filename}")
+async def fetch_user_email(filename: str, token: str = Depends(verify_token)):
+    """获取指定凭证文件的用户邮箱地址"""
+    try:
+        await ensure_credential_manager_initialized()
+        
+        # 构建完整路径
+        from config import CREDENTIALS_DIR
+        if not os.path.isabs(filename):
+            filepath = os.path.abspath(os.path.join(CREDENTIALS_DIR, os.path.basename(filename)))
+        else:
+            filepath = filename
+        
+        # 验证文件路径安全性
+        if not filepath.endswith('.json') or not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        # 获取用户邮箱
+        email = await credential_manager.get_or_fetch_user_email(filepath)
+        
+        if email:
+            return JSONResponse(content={
+                "filename": os.path.basename(filepath),
+                "user_email": email,
+                "message": "成功获取用户邮箱"
+            })
+        else:
+            return JSONResponse(content={
+                "filename": os.path.basename(filepath),
+                "user_email": None,
+                "message": "无法获取用户邮箱，可能凭证已过期或权限不足"
+            }, status_code=400)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"获取用户邮箱失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/creds/refresh-all-emails")
+async def refresh_all_user_emails(token: str = Depends(verify_token)):
+    """刷新所有凭证文件的用户邮箱地址"""
+    try:
+        await ensure_credential_manager_initialized()
+        
+        # 获取所有凭证文件
+        from config import CREDENTIALS_DIR
+        import glob
+        
+        json_files = glob.glob(os.path.join(CREDENTIALS_DIR, "*.json"))
+        
+        results = []
+        success_count = 0
+        
+        for filepath in json_files:
+            try:
+                email = await credential_manager.get_or_fetch_user_email(filepath)
+                if email:
+                    success_count += 1
+                    results.append({
+                        "filename": os.path.basename(filepath),
+                        "user_email": email,
+                        "success": True
+                    })
+                else:
+                    results.append({
+                        "filename": os.path.basename(filepath),
+                        "user_email": None,
+                        "success": False,
+                        "error": "无法获取邮箱"
+                    })
+            except Exception as e:
+                results.append({
+                    "filename": os.path.basename(filepath),
+                    "user_email": None,
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        return JSONResponse(content={
+            "success_count": success_count,
+            "total_count": len(json_files),
+            "results": results,
+            "message": f"成功获取 {success_count}/{len(json_files)} 个邮箱地址"
+        })
+        
+    except Exception as e:
+        log.error(f"批量获取用户邮箱失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/creds/download-all")
 async def download_all_creds(token: str = Depends(verify_token)):
