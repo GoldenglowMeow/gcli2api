@@ -427,18 +427,31 @@ async def fake_stream_response_gemini(request_data: dict, model: str):
                     
                     log.debug(f"Gemini fake stream response data: {response_data}")
                     
-                    # 发送完整内容作为单个chunk
+                    # 发送完整内容作为单个chunk，使用思维链分离
                     if "candidates" in response_data and response_data["candidates"]:
+                        from .openai_transfer import _extract_content_and_reasoning
                         candidate = response_data["candidates"][0]
                         if "content" in candidate and "parts" in candidate["content"]:
-                            content = candidate["content"]["parts"][0].get("text", "")
+                            parts = candidate["content"]["parts"]
+                            content, reasoning_content = _extract_content_and_reasoning(parts)
                             log.debug(f"Gemini extracted content: {content}")
+                            log.debug(f"Gemini extracted reasoning: {reasoning_content[:100] if reasoning_content else 'None'}...")
+                            
+                            # 如果没有正常内容但有思维内容
+                            if not content and reasoning_content:
+                                log.warning(f"Gemini fake stream contains only thinking content: {reasoning_content[:100]}...")
+                                content = "[模型正在思考中，请稍后再试或重新提问]"
                             
                             if content:
+                                # 构建包含分离内容的响应
+                                parts_response = [{"text": content}]
+                                if reasoning_content:
+                                    parts_response.append({"text": reasoning_content, "thought": True})
+                                
                                 content_chunk = {
                                     "candidates": [{
                                         "content": {
-                                            "parts": [{"text": content}],
+                                            "parts": parts_response,
                                             "role": "model"
                                         },
                                         "finishReason": candidate.get("finishReason", "STOP"),
@@ -448,7 +461,18 @@ async def fake_stream_response_gemini(request_data: dict, model: str):
                                 yield f"data: {json.dumps(content_chunk)}\n\n".encode()
                             else:
                                 log.warning(f"No content found in Gemini candidate: {candidate}")
-                                yield f"data: {json.dumps(response_data)}\n\n".encode()
+                                # 提供默认回复
+                                error_chunk = {
+                                    "candidates": [{
+                                        "content": {
+                                            "parts": [{"text": "[响应为空，请重新尝试]"}],
+                                            "role": "model"
+                                        },
+                                        "finishReason": "STOP",
+                                        "index": 0
+                                    }]
+                                }
+                                yield f"data: {json.dumps(error_chunk)}\n\n".encode()
                         else:
                             log.warning(f"No content/parts found in Gemini candidate: {candidate}")
                             # 返回原始响应
