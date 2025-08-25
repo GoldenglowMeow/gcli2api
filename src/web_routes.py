@@ -371,11 +371,22 @@ async def creds_action(request: CredFileActionRequest, token: str = Depends(veri
         elif action == "delete":
             try:
                 os.remove(filename)
-                # 同时从状态中移除（使用标准化路径）
-                normalized_filename = os.path.abspath(filename)
-                if normalized_filename in credential_manager._creds_state:
-                    del credential_manager._creds_state[normalized_filename]
+                # 从状态中移除（使用相对路径作为键）
+                from .credential_manager import _normalize_to_relative_path
+                relative_filename = _normalize_to_relative_path(filename)
+                
+                # 检查并移除状态（支持新旧两种键格式）
+                state_keys_to_remove = []
+                for key in credential_manager._creds_state.keys():
+                    if key == relative_filename or (os.path.isabs(key) and _normalize_to_relative_path(key) == relative_filename):
+                        state_keys_to_remove.append(key)
+                
+                for key in state_keys_to_remove:
+                    del credential_manager._creds_state[key]
+                
+                if state_keys_to_remove:
                     await credential_manager._save_state()
+                
                 return JSONResponse(content={"message": f"已删除凭证文件 {os.path.basename(filename)}"})
             except OSError as e:
                 raise HTTPException(status_code=500, detail=f"删除文件失败: {str(e)}")
@@ -445,11 +456,22 @@ async def creds_batch_action(request: CredFileBatchActionRequest, token: str = D
                 elif action == "delete":
                     try:
                         os.remove(fullpath)
-                        # 从状态中移除
-                        normalized_filename = os.path.abspath(fullpath)
-                        if normalized_filename in credential_manager._creds_state:
-                            del credential_manager._creds_state[normalized_filename]
+                        # 从状态中移除（使用相对路径作为键）
+                        from .credential_manager import _normalize_to_relative_path
+                        relative_filename = _normalize_to_relative_path(fullpath)
+                        
+                        # 检查并移除状态（支持新旧两种键格式）
+                        state_keys_to_remove = []
+                        for key in credential_manager._creds_state.keys():
+                            if key == relative_filename or (os.path.isabs(key) and _normalize_to_relative_path(key) == relative_filename):
+                                state_keys_to_remove.append(key)
+                        
+                        for key in state_keys_to_remove:
+                            del credential_manager._creds_state[key]
+                        
+                        if state_keys_to_remove:
                             await credential_manager._save_state()
+                        
                         success_count += 1
                     except OSError as e:
                         errors.append(f"{filename}: 删除文件失败 - {str(e)}")
