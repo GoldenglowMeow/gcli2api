@@ -159,8 +159,9 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             if credential_manager:
                                 await credential_manager.increment_call_count()
                                 await credential_manager._rotate_credential_if_needed()
-                                # 重新获取headers（凭证可能已轮换）
-                                headers, final_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
+                                # 重新获取凭证和headers（凭证可能已轮换）
+                                new_creds, _ = await credential_manager.get_credentials_and_project()
+                                headers, final_payload = await _prepare_request_headers_and_payload(payload, new_creds, credential_manager)
                                 final_post_data = json.dumps(final_payload)
                             await asyncio.sleep(retry_interval)
                             break  # 跳出内层处理，继续外层循环重试
@@ -223,8 +224,9 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             if credential_manager:
                                 await credential_manager.increment_call_count()
                                 await credential_manager._rotate_credential_if_needed()
-                                # 重新获取headers（凭证可能已轮换）
-                                headers, final_payload = await _prepare_request_headers_and_payload(payload, creds, credential_manager)
+                                # 重新获取凭证和headers（凭证可能已轮换）
+                                new_creds, _ = await credential_manager.get_credentials_and_project()
+                                headers, final_payload = await _prepare_request_headers_and_payload(payload, new_creds, credential_manager)
                                 final_post_data = json.dumps(final_payload)
                             await asyncio.sleep(retry_interval)
                             continue
