@@ -12,7 +12,6 @@ from typing import Optional
 
 from .google_api_client import send_gemini_request, build_gemini_payload_from_native
 from .credential_manager import CredentialManager
-from .retry_429 import retry_429_wrapper
 from config import get_config_value, get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
 from .anti_truncation import apply_anti_truncation_to_stream
 from config import get_base_model_name
@@ -192,11 +191,8 @@ async def generate_content(
             log.error(f"Gemini payload build failed: {e}")
             raise HTTPException(status_code=500, detail="Request processing failed")
         
-        # 发送请求（包含429重试）
-        response = await retry_429_wrapper(
-            lambda: send_gemini_request(api_payload, False, creds, cred_mgr),
-            cred_mgr
-        )
+        # 发送请求（429重试已在google_api_client中处理）
+        response = await send_gemini_request(api_payload, False, creds, cred_mgr)
         
         # 处理响应
         try:
@@ -290,19 +286,13 @@ async def stream_generate_content(
             # 使用流式抗截断处理器
             max_attempts = get_anti_truncation_max_attempts()
             return await apply_anti_truncation_to_stream(
-                lambda payload: retry_429_wrapper(
-                    lambda: send_gemini_request(payload, True, creds, cred_mgr),
-                    cred_mgr
-                ),
+                lambda payload: send_gemini_request(payload, True, creds, cred_mgr),
                 api_payload,
                 max_attempts
             )
         
-        # 常规流式请求
-        response = await retry_429_wrapper(
-            lambda: send_gemini_request(api_payload, True, creds, cred_mgr),
-            cred_mgr
-        )
+        # 常规流式请求（429重试已在google_api_client中处理）
+        response = await send_gemini_request(api_payload, True, creds, cred_mgr)
         
         # 直接返回流式响应
         return response
@@ -396,10 +386,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str):
                 
                 # 异步发送实际请求
                 async def get_response():
-                    return await retry_429_wrapper(
-                        lambda: send_gemini_request(api_payload, False, creds, cred_mgr),
-                        cred_mgr
-                    )
+                    return await send_gemini_request(api_payload, False, creds, cred_mgr)
                 
                 # 创建请求任务
                 response_task = asyncio.create_task(get_response())

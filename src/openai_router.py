@@ -15,7 +15,6 @@ from .models import ChatCompletionRequest, ModelList, Model
 from .openai_transfer import openai_request_to_gemini, gemini_response_to_openai, gemini_stream_chunk_to_openai
 from .google_api_client import send_gemini_request, build_gemini_payload_from_openai
 from .credential_manager import CredentialManager
-from .retry_429 import retry_429_wrapper
 from .anti_truncation import apply_anti_truncation_to_stream
 from config import get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
 from log import log
@@ -153,10 +152,7 @@ async def chat_completions(
             
             # 使用流式抗截断处理器
             gemini_response = await apply_anti_truncation_to_stream(
-                lambda payload: retry_429_wrapper(
-                    lambda: send_gemini_request(payload, True, creds, cred_mgr),
-                    cred_mgr
-                ),
+                lambda payload: send_gemini_request(payload, True, creds, cred_mgr),
                 api_payload,
                 max_attempts
             )
@@ -165,12 +161,9 @@ async def chat_completions(
         elif use_anti_truncation and not is_streaming:
             log.warning("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
         
-        # 发送请求（包含429重试）
+        # 发送请求（429重试已在google_api_client中处理）
         is_streaming = getattr(request_data, "stream", False)
-        response = await retry_429_wrapper(
-            lambda: send_gemini_request(api_payload, is_streaming, creds, cred_mgr),
-            cred_mgr
-        )
+        response = await send_gemini_request(api_payload, is_streaming, creds, cred_mgr)
         
         # 如果是流式响应，直接返回
         if is_streaming:
@@ -208,10 +201,7 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: CredentialMan
             
             # 异步发送实际请求
             async def get_response():
-                return await retry_429_wrapper(
-                    lambda: send_gemini_request(api_payload, False, creds, cred_mgr),
-                    cred_mgr
-                )
+                return await send_gemini_request(api_payload, False, creds, cred_mgr)
             
             # 创建请求任务
             response_task = asyncio.create_task(get_response())
