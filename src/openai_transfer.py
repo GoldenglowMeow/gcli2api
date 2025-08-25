@@ -14,6 +14,8 @@ from config import (
     should_include_thoughts
 )
 
+from log import log
+
 def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str, Any]:
     """
     将OpenAI聊天完成请求转换为Gemini格式
@@ -30,6 +32,7 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
     # 处理对话中的每条消息
     for message in openai_request.messages:
         role = message.role
+        log.debug(f"Processing message: role={role}, content={getattr(message, 'content', None)}")
         
         # 处理系统消息 - 收集到system_instruction中
         if role == "system":
@@ -37,8 +40,10 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
                 for part in message.content:
                     if part.get("type") == "text":
                         system_instructions.append(part.get("text", ""))
+                        log.debug(f"System instruction part added: {part.get('text', '')}")
             else:
                 system_instructions.append(message.content)
+                log.debug(f"System instruction added: {message.content}")
             continue
         
         # 将OpenAI角色映射到Gemini角色
@@ -68,9 +73,11 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
                         except ValueError:
                             continue
             contents.append({"role": role, "parts": parts})
+            log.debug(f"Added message to contents: role={role}, parts={parts}")
         else:
             # 简单文本内容
             contents.append({"role": role, "parts": [{"text": message.content}]})
+            log.debug(f"Added message to contents: role={role}, content={message.content}")
     
     # 将OpenAI生成参数映射到Gemini格式
     generation_config = {}
@@ -99,6 +106,14 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
         if openai_request.response_format.get("type") == "json_object":
             generation_config["responseMimeType"] = "application/json"
 
+    # 如果contents为空（只有系统消息的情况），添加一个默认的用户消息以满足Gemini API要求
+    if not contents:
+        log.debug("No user/assistant messages found, adding default user message for Gemini API compatibility")
+        contents.append({
+            "role": "user",
+            "parts": [{"text": "请根据系统指令回答。"}]
+        })
+    
     # 构建请求负载
     request_payload = {
         "contents": contents,
@@ -117,6 +132,10 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
                 }
             ]
         }
+        log.debug(f"Added system_instruction: {combined_system_instruction}")
+    
+    log.debug(f"Final request payload contents count: {len(contents)}")
+    log.debug(f"Final request payload: {request_payload}")
     
     # 为thinking模型添加thinking配置
     thinking_budget = get_thinking_budget(openai_request.model)

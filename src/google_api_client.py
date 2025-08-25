@@ -433,7 +433,6 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
         
         return _create_error_response(f"API error: {resp.status_code}", resp.status_code)
 
-
 def build_gemini_payload_from_openai(openai_payload: dict) -> dict:
     """
     Build a Gemini API payload from an OpenAI-transformed request.
@@ -443,7 +442,7 @@ def build_gemini_payload_from_openai(openai_payload: dict) -> dict:
     
     request_data = {
         "contents": openai_payload.get("contents"),
-        "systemInstruction": openai_payload.get("systemInstruction"),
+        "systemInstruction": openai_payload.get("system_instruction"),
         "cachedContent": openai_payload.get("cachedContent"),
         "tools": openai_payload.get("tools"),
         "toolConfig": openai_payload.get("toolConfig"),

@@ -341,6 +341,8 @@ async def get_model_info(
 
 async def fake_stream_response_gemini(request_data: dict, model: str):
     """处理Gemini格式的假流式响应"""
+    import asyncio
+    
     async def gemini_stream_generator():
         try:
             # 获取凭证管理器
@@ -392,11 +394,27 @@ async def fake_stream_response_gemini(request_data: dict, model: str):
                 }
                 yield f"data: {json.dumps(heartbeat)}\n\n".encode()
                 
+                # 异步发送实际请求
+                async def get_response():
+                    return await retry_429_wrapper(
+                        lambda: send_gemini_request(api_payload, False, creds, cred_mgr),
+                        cred_mgr
+                    )
+                
+                # 创建请求任务
+                response_task = asyncio.create_task(get_response())
+                
+                # 每3秒发送一次心跳，直到收到响应
+                while not response_task.done():
+                    await asyncio.sleep(3.0)
+                    if not response_task.done():
+                        yield f"data: {json.dumps(heartbeat)}\n\n".encode()
+                
+                # 获取响应结果
+                response = await response_task
+                
                 # 发送实际请求
-                response = await retry_429_wrapper(
-                    lambda: send_gemini_request(api_payload, False, creds, cred_mgr),
-                    cred_mgr
-                )
+                # response 已在上面获取
                 
                 # 处理结果
                 try:
