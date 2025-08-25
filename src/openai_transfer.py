@@ -36,14 +36,13 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
         
         # 处理系统消息 - 收集到system_instruction中
         if role == "system":
-            if isinstance(message.content, list):
-                for part in message.content:
-                    if part.get("type") == "text":
-                        system_instructions.append(part.get("text", ""))
-                        log.debug(f"System instruction part added: {part.get('text', '')}")
-            else:
+            if isinstance(message.content, str):
                 system_instructions.append(message.content)
-                log.debug(f"System instruction added: {message.content}")
+            elif isinstance(message.content, list):
+                # 处理列表格式的系统消息
+                for part in message.content:
+                    if part.get("type") == "text" and part.get("text"):
+                        system_instructions.append(part["text"])
             continue
         
         # 将OpenAI角色映射到Gemini角色
@@ -108,11 +107,7 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
 
     # 如果contents为空（只有系统消息的情况），添加一个默认的用户消息以满足Gemini API要求
     if not contents:
-        log.debug("No user/assistant messages found, adding default user message for Gemini API compatibility")
-        contents.append({
-            "role": "user",
-            "parts": [{"text": "请根据系统指令回答。"}]
-        })
+        contents.append({"role": "user", "parts": [{"text": "请根据系统指令回答。"}]})
     
     # 构建请求负载
     request_payload = {
@@ -125,17 +120,9 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
     # 如果有系统消息，添加system_instruction
     if system_instructions:
         combined_system_instruction = "\n\n".join(system_instructions)
-        request_payload["system_instruction"] = {
-            "parts": [
-                {
-                    "text": combined_system_instruction
-                }
-            ]
-        }
-        log.debug(f"Added system_instruction: {combined_system_instruction}")
+        request_payload["system_instruction"] = combined_system_instruction
     
-    log.debug(f"Final request payload contents count: {len(contents)}")
-    log.debug(f"Final request payload: {request_payload}")
+    log.debug(f"Final request payload contents count: {len(contents)}, system_instruction: {bool(system_instructions)}")
     
     # 为thinking模型添加thinking配置
     thinking_budget = get_thinking_budget(openai_request.model)

@@ -442,15 +442,27 @@ def build_gemini_payload_from_openai(openai_payload: dict) -> dict:
     model = openai_payload.get("model")
     safety_settings = openai_payload.get("safetySettings", DEFAULT_SAFETY_SETTINGS)
     
+    # 构建请求数据，直接使用扁平化结构
     request_data = {
         "contents": openai_payload.get("contents"),
-        "systemInstruction": openai_payload.get("system_instruction"),
-        "cachedContent": openai_payload.get("cachedContent"),
-        "tools": openai_payload.get("tools"),
-        "toolConfig": openai_payload.get("toolConfig"),
         "safetySettings": safety_settings,
         "generationConfig": openai_payload.get("generationConfig", {}),
     }
+    
+    # 添加系统指令（如果存在）
+    system_instruction = openai_payload.get("system_instruction")
+    if system_instruction:
+        if isinstance(system_instruction, str):
+            request_data["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        else:
+            request_data["systemInstruction"] = system_instruction
+    
+    # 添加其他可选字段
+    optional_fields = ["cachedContent", "tools", "toolConfig"]
+    for field in optional_fields:
+        value = openai_payload.get(field)
+        if value is not None:
+            request_data[field] = value
     
     # 移除None值
     request_data = {k: v for k, v in request_data.items() if v is not None}
