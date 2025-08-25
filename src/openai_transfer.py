@@ -1,6 +1,6 @@
 """
 OpenAI Transfer Module - Handles conversion between OpenAI and Gemini API formats
-根据修改指导要求，被openai-router调用，负责OpenAI格式与Gemini格式的双向转换
+被openai-router调用，负责OpenAI格式与Gemini格式的双向转换
 """
 import time
 import uuid
