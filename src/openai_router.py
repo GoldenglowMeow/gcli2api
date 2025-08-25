@@ -16,8 +16,8 @@ from .openai_transfer import openai_request_to_gemini, gemini_response_to_openai
 from .google_api_client import send_gemini_request, build_gemini_payload_from_openai
 from .credential_manager import CredentialManager
 from .retry_429 import retry_429_wrapper
-from .anti_truncation import apply_anti_truncation, apply_anti_truncation_to_stream
-from config import get_config_value, get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
+from .anti_truncation import apply_anti_truncation_to_stream
+from config import get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
 from log import log
 
 # 创建路由器
