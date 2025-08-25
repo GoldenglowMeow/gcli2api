@@ -157,8 +157,8 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                         if retry_429_enabled and attempt < max_retries:
                             log.warning(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
                             if credential_manager:
-                                await credential_manager.increment_call_count()
-                                await credential_manager._rotate_credential_if_needed()
+                                # 429错误时强制轮换凭证，不增加调用计数
+                                await credential_manager._force_rotate_credential()
                                 # 重新获取凭证和headers（凭证可能已轮换）
                                 new_creds, _ = await credential_manager.get_credentials_and_project()
                                 headers, final_payload = await _prepare_request_headers_and_payload(payload, new_creds, credential_manager)
@@ -222,8 +222,8 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                         if retry_429_enabled and attempt < max_retries:
                             log.warning(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
                             if credential_manager:
-                                await credential_manager.increment_call_count()
-                                await credential_manager._rotate_credential_if_needed()
+                                # 429错误时强制轮换凭证，不增加调用计数
+                                await credential_manager._force_rotate_credential()
                                 # 重新获取凭证和headers（凭证可能已轮换）
                                 new_creds, _ = await credential_manager.get_credentials_and_project()
                                 headers, final_payload = await _prepare_request_headers_and_payload(payload, new_creds, credential_manager)
