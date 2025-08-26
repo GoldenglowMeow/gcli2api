@@ -123,8 +123,8 @@ async def chat_completions(
         # 获取凭证
         creds, project_id = await cred_mgr.get_credentials_and_project()
         if not creds:
-            log.error("No credentials available")
-            raise HTTPException(status_code=500, detail="No credentials available")
+            log.error("当前无凭证，请去控制台获取")
+            raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
         
         # 增加调用计数
         await cred_mgr.increment_call_count()

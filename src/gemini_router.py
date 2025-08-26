@@ -178,8 +178,8 @@ async def generate_content(
         # 获取凭证
         creds, project_id = await cred_mgr.get_credentials_and_project()
         if not creds:
-            log.error("No credentials available")
-            raise HTTPException(status_code=500, detail="No credentials available")
+            log.error("当前无凭证，请去控制台获取")
+            raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
         
         # 增加调用计数
         await cred_mgr.increment_call_count()
@@ -267,8 +267,8 @@ async def stream_generate_content(
         # 获取凭证
         creds, project_id = await cred_mgr.get_credentials_and_project()
         if not creds:
-            log.error("No credentials available")
-            raise HTTPException(status_code=500, detail="No credentials available")
+            log.error("当前无凭证，请去控制台获取")
+            raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
         
         # 增加调用计数
         await cred_mgr.increment_call_count()
@@ -340,10 +340,10 @@ async def fake_stream_response_gemini(request_data: dict, model: str):
                 # 获取凭证
                 creds, project_id = await cred_mgr.get_credentials_and_project()
                 if not creds:
-                    log.error("No credentials available")
+                    log.error("当前无凭证，请去控制台获取")
                     error_chunk = {
                         "error": {
-                            "message": "No credentials available",
+                            "message": "当前无凭证，请去控制台获取",
                             "type": "authentication_error",
                             "code": 500
                         }
