@@ -8,6 +8,7 @@ import json
 import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -30,26 +31,46 @@ credential_manager = CredentialManager()
 
 # WebSocket连接管理
 class ConnectionManager:
-    def __init__(self):
+    def __init__(self, max_connections: int = 10):
         self.active_connections: List[WebSocket] = []
+        self.max_connections = max_connections
 
     async def connect(self, websocket: WebSocket):
+        # 限制最大连接数，防止内存无限增长
+        if len(self.active_connections) >= self.max_connections:
+            await websocket.close(code=1008, reason="Too many connections")
+            return False
+        
         await websocket.accept()
         self.active_connections.append(websocket)
+        log.debug(f"WebSocket连接建立，当前连接数: {len(self.active_connections)}")
+        return True
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
+        log.debug(f"WebSocket连接断开，当前连接数: {len(self.active_connections)}")
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
+        try:
+            await websocket.send_text(message)
+        except Exception:
+            self.disconnect(websocket)
 
     async def broadcast(self, message: str):
-        for connection in self.active_connections.copy():
+        # 使用倒序遍历，安全地移除失效连接
+        for i in range(len(self.active_connections) - 1, -1, -1):
             try:
-                await connection.send_text(message)
-            except:
-                self.disconnect(connection)
+                await self.active_connections[i].send_text(message)
+            except Exception:
+                self.active_connections.pop(i)
+                
+    def cleanup_dead_connections(self):
+        """清理已断开的连接"""
+        self.active_connections = [
+            conn for conn in self.active_connections 
+            if conn.client_state != WebSocketState.DISCONNECTED
+        ]
 
 manager = ConnectionManager()
 
@@ -1015,11 +1036,20 @@ async def clear_logs(token: str = Depends(verify_token)):
         
         # 检查日志文件是否存在
         if os.path.exists(log_file_path):
-            # 清空文件内容（保留文件）
-            with open(log_file_path, 'w', encoding='utf-8') as f:
-                f.write('')
-            log.info(f"日志文件已清空: {log_file_path}")
-            return JSONResponse(content={"message": f"日志文件已清空: {os.path.basename(log_file_path)}"})
+            try:
+                # 清空文件内容（保留文件），确保以UTF-8编码写入
+                with open(log_file_path, 'w', encoding='utf-8', newline='') as f:
+                    f.write('')
+                    f.flush()  # 强制刷新到磁盘
+                log.info(f"日志文件已清空: {log_file_path}")
+                
+                # 通知所有WebSocket连接日志已清空
+                await manager.broadcast("--- 日志文件已清空 ---")
+                
+                return JSONResponse(content={"message": f"日志文件已清空: {os.path.basename(log_file_path)}"})
+            except Exception as e:
+                log.error(f"清空日志文件失败: {e}")
+                raise HTTPException(status_code=500, detail=f"清空日志文件失败: {str(e)}")
         else:
             return JSONResponse(content={"message": "日志文件不存在"})
             
@@ -1066,42 +1096,86 @@ async def download_logs(token: str = Depends(verify_token)):
 @router.websocket("/auth/logs/stream")
 async def websocket_logs(websocket: WebSocket):
     """WebSocket端点，用于实时日志流"""
-    await manager.connect(websocket)
+    # 检查连接数限制
+    if not await manager.connect(websocket):
+        return
+    
     try:
         # 从配置获取日志文件路径
         import config
         log_file_path = config.get_log_file()
+        
+        # 发送初始日志（限制为最后50行，减少内存占用）
         if os.path.exists(log_file_path):
             try:
                 with open(log_file_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
-                    # 发送最后100行
-                    for line in lines[-100:]:
-                        await websocket.send_text(line.strip())
+                    # 只发送最后50行，减少初始内存消耗
+                    for line in lines[-50:]:
+                        if line.strip():
+                            await websocket.send_text(line.strip())
             except Exception as e:
                 await websocket.send_text(f"Error reading log file: {e}")
         
-        # 监控日志文件变化（简单实现）
+        # 监控日志文件变化
         last_size = os.path.getsize(log_file_path) if os.path.exists(log_file_path) else 0
+        max_read_size = 8192  # 限制单次读取大小为8KB，防止大量日志造成内存激增
+        check_interval = 2    # 增加检查间隔，减少CPU和I/O开销
         
-        while True:
-            await asyncio.sleep(1)
+        while websocket.client_state == WebSocketState.CONNECTED:
+            await asyncio.sleep(check_interval)
             
             if os.path.exists(log_file_path):
                 current_size = os.path.getsize(log_file_path)
                 if current_size > last_size:
-                    # 读取新增内容
-                    with open(log_file_path, "r", encoding="utf-8") as f:
-                        f.seek(last_size)
-                        new_content = f.read()
-                        for line in new_content.splitlines():
-                            if line.strip():
-                                await websocket.send_text(line)
-                    last_size = current_size
+                    # 限制读取大小，防止单次读取过多内容
+                    read_size = min(current_size - last_size, max_read_size)
+                    
+                    try:
+                        with open(log_file_path, "r", encoding="utf-8", errors="replace") as f:
+                            f.seek(last_size)
+                            new_content = f.read(read_size)
+                            
+                            # 处理编码错误的情况
+                            if not new_content:
+                                last_size = current_size
+                                continue
+                            
+                            # 分行发送，避免发送不完整的行
+                            lines = new_content.splitlines(keepends=True)
+                            if lines:
+                                # 如果最后一行没有换行符，保留到下次处理
+                                if not lines[-1].endswith('\n') and len(lines) > 1:
+                                    # 除了最后一行，其他都发送
+                                    for line in lines[:-1]:
+                                        if line.strip():
+                                            await websocket.send_text(line.rstrip())
+                                    # 更新位置，但要退回最后一行的字节数
+                                    last_size += len(new_content.encode('utf-8')) - len(lines[-1].encode('utf-8'))
+                                else:
+                                    # 所有行都发送
+                                    for line in lines:
+                                        if line.strip():
+                                            await websocket.send_text(line.rstrip())
+                                    last_size += len(new_content.encode('utf-8'))
+                    except UnicodeDecodeError as e:
+                        # 遇到编码错误时，跳过这部分内容
+                        log.warning(f"WebSocket日志读取编码错误: {e}, 跳过部分内容")
+                        last_size = current_size
+                    except Exception as e:
+                        await websocket.send_text(f"Error reading new content: {e}")
+                        # 发生其他错误时，重置文件位置
+                        last_size = current_size
+                        
+                # 如果文件被截断（如清空日志），重置位置
+                elif current_size < last_size:
+                    last_size = 0
+                    await websocket.send_text("--- 日志已清空 ---")
                     
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        pass
     except Exception as e:
         log.error(f"WebSocket logs error: {e}")
+    finally:
         manager.disconnect(websocket)
 
