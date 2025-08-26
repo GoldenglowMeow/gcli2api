@@ -165,7 +165,7 @@ async def generate_content(
         return JSONResponse(content={
             "candidates": [{
                 "content": {
-                    "parts": [{"text": "公益站正常工作中"}],
+                    "parts": [{"text": "gcli2api工作中"}],
                     "role": "model"
                 },
                 "finishReason": "STOP",
