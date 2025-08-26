@@ -104,6 +104,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     return credentials.credentials
 
 @router.get("/", response_class=HTMLResponse)
+@router.get("/v1", response_class=HTMLResponse)
 @router.get("/auth", response_class=HTMLResponse)
 async def serve_control_panel():
     """提供统一控制面板（包含认证、文件管理、配置等功能）"""
