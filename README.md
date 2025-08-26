@@ -122,7 +122,7 @@ bash start.sh
 
 **Docker 运行命令**
 ```bash
-docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(pwd)/data/creds:/app/creds ghcr.io/cetaceang/gcli2api:latest
+docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(pwd)/data/creds:/app/creds ghcr.io/sukaka/gcli2api:latest
 ```
 
 **Docker Compose 运行命令**
@@ -132,7 +132,7 @@ docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(p
 
     services:
       gcli2api:
-        image: ghcr.io/cetaceang/gcli2api:latest
+        image: ghcr.io/sukaka/gcli2api:latest
         container_name: gcli2api
         restart: unless-stopped
         network_mode: host
