@@ -6,7 +6,7 @@ class Model(BaseModel):
     id: str
     object: str = "model"
     created: Optional[int] = None
-    owned_by: Optional[str] = "anthropic"
+    owned_by: Optional[str] = "google"
 
 class ModelList(BaseModel):
     object: str = "list"
