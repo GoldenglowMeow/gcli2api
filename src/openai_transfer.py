@@ -30,20 +30,31 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
     system_instructions = []
     
     # 处理对话中的每条消息
+    # 第一阶段：收集连续的system消息到system_instruction中
+    collecting_system = True
+    
     for message in openai_request.messages:
         role = message.role
         log.debug(f"Processing message: role={role}, content={getattr(message, 'content', None)}")
         
-        # 处理系统消息 - 收集到system_instruction中
+        # 处理系统消息
         if role == "system":
-            if isinstance(message.content, str):
-                system_instructions.append(message.content)
-            elif isinstance(message.content, list):
-                # 处理列表格式的系统消息
-                for part in message.content:
-                    if part.get("type") == "text" and part.get("text"):
-                        system_instructions.append(part["text"])
-            continue
+            if collecting_system:
+                # 仍在收集连续的system消息
+                if isinstance(message.content, str):
+                    system_instructions.append(message.content)
+                elif isinstance(message.content, list):
+                    # 处理列表格式的系统消息
+                    for part in message.content:
+                        if part.get("type") == "text" and part.get("text"):
+                            system_instructions.append(part["text"])
+                continue
+            else:
+                # 后续的system消息转换为user消息
+                role = "user"
+        else:
+            # 遇到非system消息，停止收集system消息
+            collecting_system = False
         
         # 将OpenAI角色映射到Gemini角色
         if role == "assistant":
