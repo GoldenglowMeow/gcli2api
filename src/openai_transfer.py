@@ -365,7 +365,7 @@ def create_health_check_response() -> Dict[str, Any]:
         "choices": [{
             "message": {
                 "role": "assistant", 
-                "content": "公益站正常工作中"
+                "content": "gcli2api正常工作中"
             }
         }]
     }

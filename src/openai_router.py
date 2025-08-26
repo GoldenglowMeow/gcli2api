@@ -77,7 +77,7 @@ async def chat_completions(
         getattr(request_data.messages[0], "role", None) == "user" and
         getattr(request_data.messages[0], "content", None) == "Hi"):
         return JSONResponse(content={
-            "choices": [{"message": {"role": "assistant", "content": "公益站正常工作中"}}]
+            "choices": [{"message": {"role": "assistant", "content": "gcli2api正常工作中"}}]
         })
     
     # 限制max_tokens
