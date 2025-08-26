@@ -13,12 +13,12 @@ CODE_ASSIST_ENDPOINT = os.getenv("CODE_ASSIST_ENDPOINT", "https://cloudcode-pa.g
 CLI_VERSION = "0.1.5"  # Match current gemini-cli version
 
 # 凭证目录
-CREDENTIALS_DIR = "./creds"
+CREDENTIALS_DIR = os.getenv("CREDENTIALS_DIR", "./creds")
 
 # 自动封禁配置
 AUTO_BAN_ENABLED = os.getenv("AUTO_BAN", "false").lower() in ("true", "1", "yes", "on")
 
-# 需要自动封禁的错误码
+# 需要自动封禁的错误码 (可通过环境变量 AUTO_BAN_ERROR_CODES 覆盖)
 AUTO_BAN_ERROR_CODES = [400, 403]
 
 # Default Safety Settings for Google API
@@ -161,15 +161,54 @@ def get_proxy_config():
 
 # Dynamic configuration getters
 def get_calls_per_rotation() -> int:
-    """Get calls per rotation setting."""
+    """
+    Get calls per rotation setting.
+    
+    Environment variable: CALLS_PER_ROTATION
+    TOML config key: calls_per_rotation
+    Default: 100
+    """
+    env_value = os.getenv("CALLS_PER_ROTATION")
+    if env_value:
+        try:
+            return int(env_value)
+        except ValueError:
+            pass
+    
     return int(get_config_value("calls_per_rotation", 100))
 
 def get_http_timeout() -> float:
-    """Get HTTP timeout setting."""
+    """
+    Get HTTP timeout setting.
+    
+    Environment variable: HTTP_TIMEOUT
+    TOML config key: http_timeout
+    Default: 30.0
+    """
+    env_value = os.getenv("HTTP_TIMEOUT")
+    if env_value:
+        try:
+            return float(env_value)
+        except ValueError:
+            pass
+    
     return float(get_config_value("http_timeout", 30.0))
 
 def get_max_connections() -> int:
-    """Get max connections setting."""
+    """
+    Get max connections setting.
+    
+    Environment variable: MAX_CONNECTIONS
+    TOML config key: max_connections
+    Default: 100
+    """
+    env_value = os.getenv("MAX_CONNECTIONS")
+    if env_value:
+        try:
+            return int(env_value)
+        except ValueError:
+            pass
+    
     return int(get_config_value("max_connections", 100))
 
 def get_auto_ban_enabled() -> bool:
@@ -181,7 +220,20 @@ def get_auto_ban_enabled() -> bool:
     return bool(get_config_value("auto_ban_enabled", AUTO_BAN_ENABLED))
 
 def get_auto_ban_error_codes() -> list:
-    """Get auto ban error codes."""
+    """
+    Get auto ban error codes.
+    
+    Environment variable: AUTO_BAN_ERROR_CODES (comma-separated, e.g., "400,403")
+    TOML config key: auto_ban_error_codes
+    Default: [400, 403]
+    """
+    env_value = os.getenv("AUTO_BAN_ERROR_CODES")
+    if env_value:
+        try:
+            return [int(code.strip()) for code in env_value.split(",") if code.strip()]
+        except ValueError:
+            pass
+    
     toml_codes = get_config_value("auto_ban_error_codes")
     if toml_codes and isinstance(toml_codes, list):
         return toml_codes
