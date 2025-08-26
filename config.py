@@ -162,7 +162,7 @@ def get_proxy_config():
 # Dynamic configuration getters
 def get_calls_per_rotation() -> int:
     """Get calls per rotation setting."""
-    return int(get_config_value("calls_per_rotation", 10))
+    return int(get_config_value("calls_per_rotation", 100))
 
 def get_http_timeout() -> float:
     """Get HTTP timeout setting."""
