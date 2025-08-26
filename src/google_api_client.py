@@ -45,15 +45,15 @@ async def _handle_api_error(credential_manager: CredentialManager, status_code: 
     """Handle API errors by rotating credentials when needed. Error recording should be done before calling this function."""
     if status_code == 429 and credential_manager:
         if response_content:
-            log.error(f"[ERROR] Google API returned status 429 - quota exhausted. Response details: {response_content[:500]}")
+            log.error(f"Google API returned status 429 - quota exhausted. Response details: {response_content[:500]}")
         else:
-            log.error("[ERROR] Google API returned status 429 - quota exhausted, switching credentials")
+            log.error("Google API returned status 429 - quota exhausted, switching credentials")
         await credential_manager.rotate_to_next_credential()
     
     # 处理自动封禁的错误码
     elif get_auto_ban_enabled() and status_code in get_auto_ban_error_codes() and credential_manager:
         if response_content:
-            log.error(f"[ERROR] Google API returned status {status_code} - auto ban triggered. Response details: {response_content[:500]}")
+            log.error(f"Google API returned status {status_code} - auto ban triggered. Response details: {response_content[:500]}")
         else:
             log.warning(f"Google API returned status {status_code} - auto ban triggered, rotating credentials")
         await credential_manager.rotate_to_next_credential()
@@ -284,14 +284,14 @@ def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client:
             # 显示详细错误信息
             if resp.status_code == 429:
                 if response_content:
-                    log.error(f"[ERROR] Google API returned status 429 (STREAMING). Response details: {response_content[:500]}")
+                    log.error(f"Google API returned status 429 (STREAMING). Response details: {response_content[:500]}")
                 else:
-                    log.error(f"[ERROR] Google API returned status 429 (STREAMING)")
+                    log.error(f"Google API returned status 429 (STREAMING)")
             else:
                 if response_content:
-                    log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING). Response details: {response_content[:500]}")
+                    log.error(f"Google API returned status {resp.status_code} (STREAMING). Response details: {response_content[:500]}")
                 else:
-                    log.error(f"[ERROR] Google API returned status {resp.status_code} (STREAMING)")
+                    log.error(f"Google API returned status {resp.status_code} (STREAMING)")
             
             if credential_manager:
                 if current_file:
@@ -415,14 +415,14 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
         # 显示详细错误信息
         if resp.status_code == 429:
             if response_content:
-                log.error(f"[ERROR] Google API returned status 429 (NON-STREAMING). Response details: {response_content[:500]}")
+                log.error(f"Google API returned status 429 (NON-STREAMING). Response details: {response_content[:500]}")
             else:
-                log.error(f"[ERROR] Google API returned status 429 (NON-STREAMING)")
+                log.error(f"Google API returned status 429 (NON-STREAMING)")
         else:
             if response_content:
-                log.error(f"[ERROR] Google API returned status {resp.status_code} (NON-STREAMING). Response details: {response_content[:500]}")
+                log.error(f"Google API returned status {resp.status_code} (NON-STREAMING). Response details: {response_content[:500]}")
             else:
-                log.error(f"[ERROR] Google API returned status {resp.status_code} (NON-STREAMING)")
+                log.error(f"Google API returned status {resp.status_code} (NON-STREAMING)")
         
         if credential_manager:
             if current_file:
