@@ -4,7 +4,6 @@ OAuth Web 服务器 - 独立的OAuth认证服务
 提供简化的OAuth认证界面，只包含验证功能，不包含上传和管理功能
 """
 
-import os
 import sys
 from log import log
 import asyncio
