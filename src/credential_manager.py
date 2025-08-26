@@ -535,10 +535,17 @@ class CredentialManager:
         if len(self._credential_files) <= 1:
             log.warning("Only one credential available, cannot rotate")
             return
-        
+
         old_index = self._current_credential_index
         self._current_credential_index = (self._current_credential_index + 1) % len(self._credential_files)
         self._call_count = 0  # Reset call counter
+
+        # 清理缓存状态以确保使用新凭证
+        self._cached_credentials = None
+        self._cached_project_id = None
+        self._current_file_path = None
+        self._cache_timestamp = 0
+
         log.info(f"Force rotated from credential index {old_index} to {self._current_credential_index} due to 429 error")
 
     async def _discover_credential_files_unlocked(self):
