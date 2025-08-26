@@ -56,23 +56,6 @@ def _normalize_to_relative_path(filepath: str, base_dir: str = None) -> str:
     # 其他情况也只返回文件名
     return os.path.basename(filepath)
 
-def _relative_to_absolute_path(relative_path: str, base_dir: str = None) -> str:
-    """将相对路径转换为绝对路径"""
-    if base_dir is None:
-        from config import CREDENTIALS_DIR
-        base_dir = CREDENTIALS_DIR
-    
-    # 环境变量路径保持原样
-    if relative_path.startswith('<ENV_'):
-        return relative_path
-    
-    # 如果已经是绝对路径，直接返回
-    if os.path.isabs(relative_path):
-        return relative_path
-    
-    # 相对路径转绝对路径
-    return os.path.abspath(os.path.join(base_dir, relative_path))
-
 class CredentialManager:
     """High-performance credential manager with call-based rotation and caching."""
 
