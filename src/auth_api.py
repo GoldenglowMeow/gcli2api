@@ -959,29 +959,42 @@ def async_shutdown_server(server, port):
     log.debug(f"开始异步关闭端口 {port} 的OAuth回调服务器")
 
 def cleanup_expired_flows():
-    """清理过期的认证流程"""
+    """清理过期的认证流程 - 内存优化版本"""
     current_time = time.time()
     expired_states = []
     
+    # 使用更短的过期时间，减少内存占用
+    EXPIRY_TIME = 900  # 15分钟过期（原来30分钟）
+    
     for state, flow_data in auth_flows.items():
-        if current_time - flow_data['created_at'] > 1800:  # 30分钟过期
+        if current_time - flow_data['created_at'] > EXPIRY_TIME:
             expired_states.append(state)
     
+    # 批量清理，提高效率
     for state in expired_states:
-        flow_data = auth_flows[state]
-        # 快速关闭可能存在的服务器
-        try:
-            if flow_data.get('server'):
-                server = flow_data['server']
-                port = flow_data.get('callback_port')
-                async_shutdown_server(server, port)
-        except Exception as e:
-            log.debug(f"清理过期流程时启动异步关闭服务器失败: {e}")
-        
-        del auth_flows[state]
+        flow_data = auth_flows.get(state)
+        if flow_data:
+            # 快速关闭可能存在的服务器
+            try:
+                if flow_data.get('server'):
+                    server = flow_data['server']
+                    port = flow_data.get('callback_port')
+                    async_shutdown_server(server, port)
+            except Exception as e:
+                log.debug(f"清理过期流程时启动异步关闭服务器失败: {e}")
+            
+            # 显式清理流程数据
+            flow_data.clear()
+            del auth_flows[state]
     
     if expired_states:
         log.info(f"清理了 {len(expired_states)} 个过期的认证流程")
+    
+    # 当字典过大时，主动触发垃圾回收
+    if len(auth_flows) > 50:
+        import gc
+        gc.collect()
+        log.debug(f"触发垃圾回收，当前活跃认证流程数: {len(auth_flows)}")
 
 
 def get_auth_status(project_id: str) -> Dict[str, Any]:
