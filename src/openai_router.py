@@ -303,23 +303,41 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: CredentialMan
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
-async def convert_streaming_response(gemini_response: StreamingResponse, model: str) -> StreamingResponse:
+async def convert_streaming_response(gemini_response, model: str) -> StreamingResponse:
     """转换流式响应为OpenAI格式"""
     response_id = str(uuid.uuid4())
     
     async def openai_stream_generator():
         try:
-            async for chunk in gemini_response.body_iterator:
-                if not chunk or not chunk.startswith(b'data: '):
-                    continue
-                
-                payload = chunk[len(b'data: '):]
-                try:
-                    gemini_chunk = json.loads(payload.decode())
-                    openai_chunk = gemini_stream_chunk_to_openai(gemini_chunk, model, response_id)
-                    yield f"data: {json.dumps(openai_chunk, separators=(',',':'))}\n\n".encode()
-                except json.JSONDecodeError:
-                    continue
+            # 处理不同类型的响应对象
+            if hasattr(gemini_response, 'body_iterator'):
+                # FastAPI StreamingResponse
+                async for chunk in gemini_response.body_iterator:
+                    if not chunk or not chunk.startswith(b'data: '):
+                        continue
+                    
+                    payload = chunk[len(b'data: '):]
+                    try:
+                        gemini_chunk = json.loads(payload.decode())
+                        openai_chunk = gemini_stream_chunk_to_openai(gemini_chunk, model, response_id)
+                        yield f"data: {json.dumps(openai_chunk, separators=(',',':'))}\n\n".encode()
+                    except json.JSONDecodeError:
+                        continue
+            else:
+                # 其他类型的响应，尝试直接处理
+                log.warning(f"Unexpected response type: {type(gemini_response)}")
+                error_chunk = {
+                    "id": response_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": "Response type error"},
+                        "finish_reason": "stop"
+                    }]
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n".encode()
             
             # 发送结束标记
             yield "data: [DONE]\n\n".encode()
