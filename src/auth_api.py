@@ -1017,9 +1017,9 @@ auth_tokens = {}  # 存储有效的认证令牌
 
 
 def verify_password(password: str) -> bool:
-    """验证密码"""
-    from config import get_server_password
-    correct_password = get_server_password()
+    """验证密码（面板登录使用）"""
+    from config import get_panel_password
+    correct_password = get_panel_password()
     return password == correct_password
 
 

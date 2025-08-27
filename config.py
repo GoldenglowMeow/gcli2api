@@ -399,9 +399,41 @@ def get_server_port() -> int:
     
     return int(get_config_value("port", 7861))
 
+def get_api_password() -> str:
+    """
+    Get API password setting for chat endpoints.
+    
+    Environment variable: API_PASSWORD
+    TOML config key: api_password
+    Default: Uses PASSWORD env var for compatibility, otherwise 'pwd'
+    """
+    # 优先使用 API_PASSWORD，如果没有则使用通用 PASSWORD 保证兼容性
+    api_password = get_config_value("api_password", None, "API_PASSWORD")
+    if api_password:
+        return str(api_password)
+    
+    # 兼容性：使用通用密码
+    return str(get_config_value("password", "pwd", "PASSWORD"))
+
+def get_panel_password() -> str:
+    """
+    Get panel password setting for web interface.
+    
+    Environment variable: PANEL_PASSWORD
+    TOML config key: panel_password
+    Default: Uses PASSWORD env var for compatibility, otherwise 'pwd'
+    """
+    # 优先使用 PANEL_PASSWORD，如果没有则使用通用 PASSWORD 保证兼容性
+    panel_password = get_config_value("panel_password", None, "PANEL_PASSWORD")
+    if panel_password:
+        return str(panel_password)
+    
+    # 兼容性：使用通用密码
+    return str(get_config_value("password", "pwd", "PASSWORD"))
+
 def get_server_password() -> str:
     """
-    Get server password setting.
+    Get server password setting (deprecated, use get_api_password or get_panel_password).
     
     Environment variable: PASSWORD
     TOML config key: password

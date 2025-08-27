@@ -89,8 +89,8 @@ async def get_credential_manager():
 
 def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """验证用户密码（控制面板使用）"""
-    from config import get_server_password
-    password = get_server_password()
+    from config import get_panel_password
+    password = get_panel_password()
     token = credentials.credentials
     if token != password:
         raise HTTPException(status_code=403, detail="密码错误")
@@ -751,6 +751,8 @@ async def get_config(token: str = Depends(verify_token)):
         # 服务器配置
         current_config["host"] = config.get_server_host()
         current_config["port"] = config.get_server_port()
+        current_config["api_password"] = config.get_api_password()
+        current_config["panel_password"] = config.get_panel_password()
         current_config["password"] = config.get_server_password()
         
         # 检查其他环境变量锁定状态
@@ -770,6 +772,10 @@ async def get_config(token: str = Depends(verify_token)):
             env_locked.append("host")
         if os.getenv("PORT"):
             env_locked.append("port")
+        if os.getenv("API_PASSWORD"):
+            env_locked.append("api_password")
+        if os.getenv("PANEL_PASSWORD"):
+            env_locked.append("panel_password")
         if os.getenv("PASSWORD"):
             env_locked.append("password")
         
@@ -845,6 +851,14 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             if not isinstance(new_config["port"], int) or new_config["port"] < 1 or new_config["port"] > 65535:
                 raise HTTPException(status_code=400, detail="端口号必须是1-65535之间的整数")
         
+        if "api_password" in new_config:
+            if not isinstance(new_config["api_password"], str):
+                raise HTTPException(status_code=400, detail="API访问密码必须是字符串")
+        
+        if "panel_password" in new_config:
+            if not isinstance(new_config["panel_password"], str):
+                raise HTTPException(status_code=400, detail="控制面板密码必须是字符串")
+        
         if "password" in new_config:
             if not isinstance(new_config["password"], str):
                 raise HTTPException(status_code=400, detail="访问密码必须是字符串")
@@ -886,6 +900,10 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             env_locked_keys.add("host")
         if os.getenv("PORT"):
             env_locked_keys.add("port")
+        if os.getenv("API_PASSWORD"):
+            env_locked_keys.add("api_password")
+        if os.getenv("PANEL_PASSWORD"):
+            env_locked_keys.add("panel_password")
         if os.getenv("PASSWORD"):
             env_locked_keys.add("password")
         
@@ -894,6 +912,10 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
                 existing_config[key] = value
                 if key == 'password':
                     log.info(f"设置password字段为: {value}")
+                elif key == 'api_password':
+                    log.info(f"设置api_password字段为: {value}")
+                elif key == 'panel_password':
+                    log.info(f"设置panel_password字段为: {value}")
         
         log.info(f"最终保存的existing_config中password = {existing_config.get('password', 'NOT_FOUND')}")
         
@@ -901,8 +923,12 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         config.save_config_to_toml(existing_config)
         
         # 验证保存后的结果
+        test_api_password = config.get_api_password()
+        test_panel_password = config.get_panel_password()
         test_password = config.get_server_password()
-        log.info(f"保存后立即读取的密码: {test_password}")
+        log.info(f"保存后立即读取的API密码: {test_api_password}")
+        log.info(f"保存后立即读取的面板密码: {test_panel_password}")
+        log.info(f"保存后立即读取的通用密码: {test_password}")
         
         # 热更新配置到内存中的模块（如果可能）
         try:

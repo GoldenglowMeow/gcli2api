@@ -35,8 +35,8 @@ async def get_credential_manager():
 
 def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """验证用户密码（Bearer Token方式）"""
-    from config import get_server_password
-    password = get_server_password()
+    from config import get_api_password
+    password = get_api_password()
     token = credentials.credentials
     if token != password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
@@ -49,8 +49,8 @@ def authenticate_gemini_flexible(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(lambda: None)
 ) -> str:
     """灵活验证：支持x-goog-api-key头部、URL参数key或Authorization Bearer"""
-    from config import get_server_password
-    password = get_server_password()
+    from config import get_api_password
+    password = get_api_password()
     
     # 尝试从URL参数key获取（Google官方标准方式）
     if key:

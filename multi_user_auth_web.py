@@ -184,8 +184,8 @@ async def lifespan(app: FastAPI):
     log.info("OAuth回调服务器将为每个认证流程动态分配端口")
 
     # 从配置获取密码和端口
-    from config import get_server_password, get_server_port
-    password = get_server_password()
+    from config import get_panel_password, get_server_port
+    password = get_panel_password()
     port = get_server_port()
 
     log.info("Web服务已由 ASGI 服务器启动")

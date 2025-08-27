@@ -904,9 +904,21 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                             </div>
                             
                             <div class="form-group">
-                                <label for="configPassword">访问密码:</label>
+                                <label for="configApiPassword">API访问密码:</label>
+                                <input type="text" id="configApiPassword" class="config-input" placeholder="pwd" />
+                                <small class="config-note">聊天API访问密码，用于OpenAI和Gemini API端点的认证</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="configPanelPassword">控制面板密码:</label>
+                                <input type="text" id="configPanelPassword" class="config-input" placeholder="pwd" />
+                                <small class="config-note">控制面板访问密码，用于web界面登录认证</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="configPassword">通用密码:</label>
                                 <input type="text" id="configPassword" class="config-input" placeholder="pwd" />
-                                <small class="config-note">API访问密码，用于认证和权限控制</small>
+                                <small class="config-note">（兼容性保留）设置后将覆盖上述两个密码，留空则使用分开的密码设置</small>
                             </div>
                         </div>
                         
@@ -2160,6 +2172,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             // 服务器配置
             setConfigField('host', currentConfig.host || '0.0.0.0');
             setConfigField('port', currentConfig.port || 7861);
+            setConfigField('configApiPassword', currentConfig.api_password || '');
+            setConfigField('configPanelPassword', currentConfig.panel_password || '');
             setConfigField('configPassword', currentConfig.password || 'pwd');
             
             // 基础配置
@@ -2216,6 +2230,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 const config = {
                     host: document.getElementById('host').value.trim(),
                     port: parseInt(document.getElementById('port').value) || 7861,
+                    api_password: document.getElementById('configApiPassword').value.trim(),
+                    panel_password: document.getElementById('configPanelPassword').value.trim(),
                     password: document.getElementById('configPassword').value.trim(),
                     code_assist_endpoint: document.getElementById('codeAssistEndpoint').value.trim(),
                     credentials_dir: document.getElementById('credentialsDir').value.trim(),
