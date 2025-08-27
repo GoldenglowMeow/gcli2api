@@ -313,10 +313,19 @@ async def convert_streaming_response(gemini_response, model: str) -> StreamingRe
             if hasattr(gemini_response, 'body_iterator'):
                 # FastAPI StreamingResponse
                 async for chunk in gemini_response.body_iterator:
-                    if not chunk or not chunk.startswith(b'data: '):
+                    if not chunk:
                         continue
                     
-                    payload = chunk[len(b'data: '):]
+                    # 处理不同数据类型的startswith问题
+                    if isinstance(chunk, bytes):
+                        if not chunk.startswith(b'data: '):
+                            continue
+                        payload = chunk[len(b'data: '):]
+                    else:
+                        chunk_str = str(chunk)
+                        if not chunk_str.startswith('data: '):
+                            continue
+                        payload = chunk_str[len('data: '):].encode()
                     try:
                         gemini_chunk = json.loads(payload.decode())
                         openai_chunk = gemini_stream_chunk_to_openai(gemini_chunk, model, response_id)

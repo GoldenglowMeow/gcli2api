@@ -93,12 +93,24 @@ class AntiTruncationStreamProcessor:
                 found_done_marker = False
                 
                 async for chunk in response.body_iterator:
-                    if not chunk or not chunk.startswith(b'data: '):
+                    if not chunk:
                         yield chunk
                         continue
                     
+                    # 处理不同数据类型的startswith问题
+                    if isinstance(chunk, bytes):
+                        if not chunk.startswith(b'data: '):
+                            yield chunk
+                            continue
+                        payload_data = chunk[len(b'data: '):]
+                    else:
+                        chunk_str = str(chunk)
+                        if not chunk_str.startswith('data: '):
+                            yield chunk
+                            continue
+                        payload_data = chunk_str[len('data: '):].encode()
+                    
                     # 解析chunk内容
-                    payload_data = chunk[len(b'data: '):]
                     
                     if payload_data.strip() == b'[DONE]':
                         # 检查是否找到了done标记
