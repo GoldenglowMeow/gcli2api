@@ -29,15 +29,18 @@
 
 ## 核心功能
 
-**双格式支持**
-- 同一端点 `/v1/chat/completions` 自动识别并支持：
-  - OpenAI 格式请求（messages 结构）
-  - Gemini 原生格式请求（contents 结构）
-- 自动格式检测和转换，无需手动切换
+**多端点双格式支持**
+- **OpenAI 兼容端点**：`/v1/chat/completions` 和 `/v1/models`
+  - 支持标准 OpenAI 格式（messages 结构）
+  - 支持 Gemini 原生格式（contents 结构）
+  - 自动格式检测和转换，无需手动切换
+- **Gemini 原生端点**：`/v1/models/{model}:generateContent` 和 `streamGenerateContent`
+  - 支持完整的 Gemini 原生 API 规范
+  - 多种认证方式：Bearer Token、x-goog-api-key 头部、URL 参数 key
 
-**OpenAI 兼容性**
-- 标准 `/v1/chat/completions` 和 `/v1/models` 端点
-- 完全符合 OpenAI API 规范
+**灵活的密码管理**
+- **分离密码支持**：API 密码（聊天端点）和控制面板密码可独立设置
+- **多种认证方式**：支持 Authorization Bearer、x-goog-api-key 头部、URL 参数等
 
 **流式支持**
 - 实时流式响应
@@ -106,7 +109,11 @@ bash start.sh
 
 **Docker 运行命令**
 ```bash
+# 使用通用密码
 docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(pwd)/data/creds:/app/creds ghcr.io/su-kaka/gcli2api:latest
+
+# 使用分离密码
+docker run -d --name gcli2api --network host -e API_PASSWORD=api_pwd -e PANEL_PASSWORD=panel_pwd -e PORT=7861 -v $(pwd)/data/creds:/app/creds ghcr.io/su-kaka/gcli2api:latest
 ```
 
 **Docker Compose 运行命令**
@@ -121,8 +128,12 @@ docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(p
         restart: unless-stopped
         network_mode: host
         environment:
+          # 使用通用密码（推荐用于简单部署）
           - PASSWORD=pwd
           - PORT=7861
+          # 或使用分离密码（推荐用于生产环境）
+          # - API_PASSWORD=your_api_password
+          # - PANEL_PASSWORD=your_panel_password
         volumes:
           - ./data/creds:/app/creds
         healthcheck:
@@ -150,14 +161,32 @@ docker run -d --name gcli2api --network host -e PASSWORD=pwd -e PORT=7861 -v $(p
 ## 配置说明
 
 1. 访问 `http://127.0.0.1:7861/auth` （默认端口，可通过 PORT 环境变量修改）
-2. 完成 OAuth 认证流程（默认密码：`pwd`，可通过 PASSWORD 环境变量修改）
-3. 配置 OpenAI 兼容客户端：
-   - **端点地址**：`http://127.0.0.1:7861/v1` （默认端口）
-   - **API 密钥**：`pwd`（默认值）
+2. 完成 OAuth 认证流程（默认密码：`pwd`，可通过环境变量修改）
+3. 配置客户端：
+
+**OpenAI 兼容客户端：**
+   - **端点地址**：`http://127.0.0.1:7861/v1`
+   - **API 密钥**：`pwd`（默认值，可通过 API_PASSWORD 或 PASSWORD 环境变量修改）
+
+**Gemini 原生客户端：**
+   - **端点地址**：`http://127.0.0.1:7861`
+   - **认证方式**：
+     - `Authorization: Bearer your_api_password`
+     - `x-goog-api-key: your_api_password` 
+     - URL 参数：`?key=your_api_password`
 
 ### 环境变量配置
+
+**基础配置**
 - `PORT`: 服务端口（默认：7861）
-- `PASSWORD`: API 密钥（默认：pwd）
+- `HOST`: 服务器监听地址（默认：0.0.0.0）
+
+**密码配置**
+- `API_PASSWORD`: 聊天 API 访问密码（默认：继承 PASSWORD 或 pwd）
+- `PANEL_PASSWORD`: 控制面板访问密码（默认：继承 PASSWORD 或 pwd）  
+- `PASSWORD`: 通用密码，设置后覆盖上述两个（默认：pwd）
+
+**凭证配置**
 - `GOOGLE_CREDENTIALS`: Google OAuth 凭证 JSON（支持原始 JSON 或 base64 编码）
 - `GOOGLE_CREDENTIALS_2` 到 `GOOGLE_CREDENTIALS_10`: 额外的凭证（用于多凭证轮换）
 
@@ -185,20 +214,36 @@ export GOOGLE_CREDENTIALS_3='{"type":"authorized_user",...}' # 第三个凭证
 
 **Docker 使用示例**
 ```bash
+# 使用通用密码
 docker run -d --name gcli2api \
   -e PASSWORD=mypassword \
   -e PORT=8080 \
   -e GOOGLE_CREDENTIALS="$(cat credential.json | base64 -w 0)" \
-  ghcr.io/cetaceang/gcli2api:latest
+  ghcr.io/su-kaka/gcli2api:latest
+
+# 使用分离密码
+docker run -d --name gcli2api \
+  -e API_PASSWORD=my_api_password \
+  -e PANEL_PASSWORD=my_panel_password \
+  -e PORT=8080 \
+  -e GOOGLE_CREDENTIALS="$(cat credential.json | base64 -w 0)" \
+  ghcr.io/su-kaka/gcli2api:latest
 ```
 
 注意：当设置了凭证环境变量时，系统将优先使用环境变量中的凭证，忽略 `creds` 目录中的文件。
 
-### API 格式支持
+### API 使用方式
 
-该服务现在支持两种请求格式，会自动检测并处理：
+本服务支持两套完整的 API 端点：
 
-**OpenAI 格式示例：**
+#### 1. OpenAI 兼容端点
+
+**端点：** `/v1/chat/completions`  
+**认证：** `Authorization: Bearer your_api_password`
+
+支持两种请求格式，会自动检测并处理：
+
+**OpenAI 格式：**
 ```json
 {
   "model": "gemini-2.5-pro",
@@ -206,11 +251,12 @@ docker run -d --name gcli2api \
     {"role": "system", "content": "You are a helpful assistant"},
     {"role": "user", "content": "Hello"}
   ],
-  "temperature": 0.7
+  "temperature": 0.7,
+  "stream": true
 }
 ```
 
-**Gemini 原生格式示例：**
+**Gemini 原生格式：**
 ```json
 {
   "model": "gemini-2.5-pro",
@@ -224,7 +270,43 @@ docker run -d --name gcli2api \
 }
 ```
 
-两种格式都会返回 OpenAI 兼容的响应格式。
+#### 2. Gemini 原生端点
+
+**非流式端点：** `/v1/models/{model}:generateContent`  
+**流式端点：** `/v1/models/{model}:streamGenerateContent`  
+**模型列表：** `/v1/models`
+
+**认证方式（任选一种）：**
+- `Authorization: Bearer your_api_password`
+- `x-goog-api-key: your_api_password`  
+- URL 参数：`?key=your_api_password`
+
+**请求示例：**
+```bash
+# 使用 x-goog-api-key 头部
+curl -X POST "http://127.0.0.1:7861/v1/models/gemini-2.5-pro:generateContent" \
+  -H "x-goog-api-key: your_api_password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      {"role": "user", "parts": [{"text": "Hello"}]}
+    ]
+  }'
+
+# 使用 URL 参数
+curl -X POST "http://127.0.0.1:7861/v1/models/gemini-2.5-pro:streamGenerateContent?key=your_api_password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      {"role": "user", "parts": [{"text": "Hello"}]}
+    ]
+  }'
+```
+
+**说明：**
+- OpenAI 端点返回 OpenAI 兼容格式
+- Gemini 端点返回 Gemini 原生格式
+- 两种端点使用相同的 API 密码
 
 ---
 
