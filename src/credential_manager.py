@@ -84,6 +84,9 @@ class CredentialManager:
         # 当前使用的凭证文件路径
         self._current_file_path: Optional[str] = None
         
+        # 最后一次文件扫描时间
+        self._last_file_scan_time = 0
+        
         self._initialized = False
 
     async def initialize(self):
@@ -643,15 +646,21 @@ class CredentialManager:
                     self._cache_timestamp = 0
             
             # 检查是否需要重新发现文件
+            current_time = time.time()
             should_check_files = (
                 not self._credential_files or  # 无文件时每次都检查
-                self._call_count >= current_calls_per_rotation  # 轮换时检查
+                self._call_count >= current_calls_per_rotation or  # 轮换时检查
+                not self._cached_credentials or  # 无缓存凭证时也检查（确保新文件能被及时发现）
+                current_time - self._last_file_scan_time > 30  # 每30秒至少扫描一次文件
             )
         
         # 第二阶段：如果需要，在锁外进行文件发现（避免阻塞其他操作）
         if should_check_files:
             # 文件发现操作不需要锁，因为它主要是读操作
             await self._discover_credential_files_unlocked()
+            # 更新扫描时间
+            async with self._lock:
+                self._last_file_scan_time = current_time
         
         # 第三阶段：获取凭证（持有锁但时间较短）
         async with self._lock:
@@ -893,6 +902,21 @@ class CredentialManager:
                 raise Exception(f"User onboarding failed. Please check your Google Cloud project permissions and try again. Error: {error_text}")
             except Exception as e:
                 raise Exception(f"User onboarding failed due to an unexpected error: {str(e)}")
+
+    async def force_refresh_credential_files(self):
+        """强制刷新凭证文件列表，用于检测新添加的凭证文件"""
+        if not self._initialized:
+            await self.initialize()
+        
+        log.info("Forcing credential files refresh")
+        async with self._lock:
+            # 清除缓存，强制重新加载
+            self._cached_credentials = None
+            self._cached_project_id = None
+            self._cache_timestamp = 0
+            
+            # 重新发现凭证文件
+            await self._discover_credential_files()
 
     async def get_credentials_and_project(self) -> Tuple[Optional[Credentials], Optional[str]]:
         """Get both credentials and project ID in one optimized call."""
