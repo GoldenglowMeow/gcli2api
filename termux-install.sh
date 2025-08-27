@@ -5,22 +5,30 @@ if [ "$(whoami)" = "root" ]; then
     exit
 fi
 
-echo "正在设置Termux镜像为Cloudflare镜像..."
+echo "检查Termux镜像源配置..."
 
-# 备份原始sources.list文件
-if [ -f "$PREFIX/etc/apt/sources.list" ]; then
-    echo "备份原始sources.list文件..."
-    cp "$PREFIX/etc/apt/sources.list" "$PREFIX/etc/apt/sources.list.backup.$(date +%Y%m%d_%H%M%S)"
-fi
-
-# 写入新的镜像源
-echo "写入新的镜像源配置..."
-cat > "$PREFIX/etc/apt/sources.list" << 'EOF'
+# 检查当前镜像源是否已经是Cloudflare镜像
+target_mirror="https://packages-cf.termux.dev/apt/termux-main"
+if [ -f "$PREFIX/etc/apt/sources.list" ] && grep -q "$target_mirror" "$PREFIX/etc/apt/sources.list"; then
+    echo "✅ 镜像源已经配置为Cloudflare镜像，跳过修改"
+else
+    echo "正在设置Termux镜像为Cloudflare镜像..."
+    
+    # 备份原始sources.list文件
+    if [ -f "$PREFIX/etc/apt/sources.list" ]; then
+        echo "备份原始sources.list文件..."
+        cp "$PREFIX/etc/apt/sources.list" "$PREFIX/etc/apt/sources.list.backup.$(date +%Y%m%d_%H%M%S)"
+    fi
+    
+    # 写入新的镜像源
+    echo "写入新的镜像源配置..."
+    cat > "$PREFIX/etc/apt/sources.list" << 'EOF'
 # Cloudflare镜像源
 deb https://packages-cf.termux.dev/apt/termux-main stable main
 EOF
-
-echo "镜像源已更新为: https://packages-cf.termux.dev/apt/termux-main"
+    
+    echo "✅ 镜像源已更新为: $target_mirror"
+fi
 
 # 更新包列表
 echo "正在更新包列表..."
