@@ -26,6 +26,7 @@ from config import (
 import asyncio
 
 from log import log
+from .usage_stats import record_successful_call
 
 def _create_error_response(message: str, status_code: int = 500) -> Response:
     """Create standardized error response."""
@@ -180,7 +181,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             return StreamingResponse(error_stream(), media_type="text/event-stream", status_code=429)
                     else:
                         # 成功响应，传递所有资源给流式处理函数管理
-                        return _handle_streaming_response_managed(resp, stream_ctx, client, credential_manager)
+                        return _handle_streaming_response_managed(resp, stream_ctx, client, credential_manager, payload.get("model", ""))
                         
                 except Exception as e:
                     # 清理资源
@@ -236,7 +237,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             return _create_error_response("429 rate limit exceeded, max retries reached", 429)
                     else:
                         # 非429错误或成功响应，正常处理
-                        return await _handle_non_streaming_response(resp, credential_manager)
+                        return await _handle_non_streaming_response(resp, credential_manager, payload.get("model", ""))
                     
         except Exception as e:
             if attempt < max_retries:
@@ -251,7 +252,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
     return _create_error_response("Max retries exceeded", 429)
 
 
-def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client: httpx.AsyncClient, credential_manager: CredentialManager = None) -> StreamingResponse:
+def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client: httpx.AsyncClient, credential_manager: CredentialManager = None, model_name: str = "") -> StreamingResponse:
     """Handle streaming response with complete resource lifecycle management."""
     
     # 检查HTTP错误
@@ -331,6 +332,11 @@ def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client:
                     current_file = credential_manager.get_current_file_path() if credential_manager else None
                     if current_file and credential_manager:
                         await credential_manager.record_success(current_file, "chat_content")
+                        # 记录到使用统计
+                        try:
+                            await record_successful_call(current_file, model_name)
+                        except Exception as e:
+                            log.debug(f"Failed to record usage statistics: {e}")
                     success_recorded = True
                 
                 payload = chunk[len('data: '):]
@@ -365,7 +371,7 @@ def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client:
         media_type="text/event-stream"
     )
 
-async def _handle_non_streaming_response(resp: httpx.Response, credential_manager: CredentialManager = None) -> Response:
+async def _handle_non_streaming_response(resp: httpx.Response, credential_manager: CredentialManager = None, model_name: str = "") -> Response:
     """Handle non-streaming response from Google API."""
     if resp.status_code == 200:
         try:
@@ -373,6 +379,11 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
             current_file = credential_manager.get_current_file_path() if credential_manager else None
             if current_file and credential_manager:
                 await credential_manager.record_success(current_file, "chat_content")
+                # 记录到使用统计
+                try:
+                    await record_successful_call(current_file, model_name)
+                except Exception as e:
+                    log.debug(f"Failed to record usage statistics: {e}")
             
             raw = await resp.aread()
             google_api_response = raw.decode('utf-8')

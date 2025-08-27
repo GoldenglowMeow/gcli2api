@@ -606,6 +606,162 @@
             font-size: 11px;
             pointer-events: none;
         }
+        
+        /* 使用统计样式 */
+        .usage-card {
+            background-color: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            position: relative;
+        }
+        .usage-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .usage-filename {
+            font-family: monospace;
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+        .usage-progress {
+            margin: 10px 0;
+        }
+        .usage-progress-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        .usage-progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        .usage-progress-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .usage-progress-fill.gemini {
+            background-color: #ff6b35;
+        }
+        .usage-progress-fill.total {
+            background-color: #007bff;
+        }
+        .usage-progress-fill.warning {
+            background-color: #ffc107;
+        }
+        .usage-progress-fill.danger {
+            background-color: #dc3545;
+        }
+        .usage-actions {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .usage-btn {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .usage-btn.reset {
+            background-color: #6c757d;
+            color: white;
+        }
+        .usage-btn.limits {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .usage-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .usage-info-item {
+            background-color: #ffffff;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .usage-info-label {
+            font-weight: bold;
+            color: #666;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .usage-info-value {
+            color: #333;
+        }
+        .reset-time {
+            font-size: 11px;
+            color: #666;
+            font-style: italic;
+            margin-top: 5px;
+        }
+        
+        /* 限制设置弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 400px;
+            max-width: 90%;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .modal-title {
+            margin: 0;
+            font-size: 16px;
+            color: #333;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #999;
+        }
+        .modal-close:hover {
+            color: #333;
+        }
+        .modal-body {
+            margin-bottom: 15px;
+        }
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
     </style>
 </head>
 <body>
@@ -629,6 +785,7 @@
                 <button class="tab" onclick="switchTab('upload')">批量上传</button>
                 <button class="tab" onclick="switchTab('envload')">环境变量</button>
                 <button class="tab" onclick="switchTab('manage')">文件管理</button>
+                <button class="tab" onclick="switchTab('usage')">使用统计</button>
                 <button class="tab" onclick="switchTab('config')">配置管理</button>
                 <button class="tab" onclick="switchTab('logs')">实时日志</button>
             </div>
@@ -875,6 +1032,60 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 </div>
             </div>
 
+            <!-- 使用统计标签页 -->
+            <div id="usageTab" class="tab-content">
+                <h3>使用统计</h3>
+                <p>查看每个凭证文件的API调用统计和配额使用情况</p>
+                
+                <!-- 统计概览 -->
+                <div class="stats-container" id="usageStatsContainer">
+                    <div class="stat-item total">
+                        <span class="stat-number" id="totalApiCalls">0</span>
+                        <span class="stat-label">总调用数</span>
+                    </div>
+                    <div class="stat-item normal" style="border-left: 4px solid #ff6b35;">
+                        <span class="stat-number" id="geminiProCalls">0</span>
+                        <span class="stat-label">Gemini 2.5 Pro</span>
+                    </div>
+                    <div class="stat-item disabled">
+                        <span class="stat-number" id="totalFiles">0</span>
+                        <span class="stat-label">活跃文件数</span>
+                    </div>
+                </div>
+                
+                <div class="manage-actions">
+                    <button class="refresh-btn" onclick="refreshUsageStats()">刷新统计</button>
+                    <button class="btn" style="background-color: #dc3545;" onclick="resetAllUsageStats()">重置所有统计</button>
+                </div>
+                
+                <!-- 文件使用统计列表 -->
+                <div id="usageListSection">
+                    <div class="loading" id="usageLoading">正在加载使用统计...</div>
+                    <div id="usageList"></div>
+                </div>
+                
+                <!-- 使用说明 -->
+                <div class="config-group">
+                    <h4>使用说明</h4>
+                    <div class="config-info">
+                        <strong>统计范围：</strong>
+                        <ul>
+                            <li><strong>Gemini 2.5 Pro 调用次数：</strong>仅统计 gemini-2.5-pro 及其变体模型的成功调用</li>
+                            <li><strong>所有模型调用次数：</strong>统计所有模型的成功调用总数</li>
+                            <li><strong>每日配额：</strong>默认每日配额 Gemini 2.5 Pro: 100次，所有模型: 1500次</li>
+                            <li><strong>配额重置：</strong>每天 UTC 07:00 自动重置调用计数</li>
+                        </ul>
+                        
+                        <strong>注意：</strong>
+                        <ul>
+                            <li>只统计返回正常响应的API调用，报错的调用不计入统计</li>
+                            <li>统计数据持久化保存在 creds_state.toml 文件中</li>
+                            <li>支持每个凭证文件独立统计和配额管理</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
             <!-- 配置管理标签页 -->
             <div id="configTab" class="tab-content">
                 <h3>配置管理</h3>
@@ -1094,6 +1305,36 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         </div>
     </div>
 
+    <!-- 限制设置弹窗 -->
+    <div id="limitsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">设置使用限制</h3>
+                <button class="modal-close" onclick="closeLimitsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="modalFilename">文件名:</label>
+                    <input type="text" id="modalFilename" class="config-input" readonly />
+                </div>
+                <div class="form-group">
+                    <label for="modalGeminiLimit">Gemini 2.5 Pro 每日限制:</label>
+                    <input type="number" id="modalGeminiLimit" class="config-input" min="1" max="10000" />
+                    <small class="config-note">每日Gemini 2.5 Pro模型调用次数限制</small>
+                </div>
+                <div class="form-group">
+                    <label for="modalTotalLimit">所有模型每日限制:</label>
+                    <input type="number" id="modalTotalLimit" class="config-input" min="1" max="50000" />
+                    <small class="config-note">每日所有模型调用次数总限制</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeLimitsModal()" style="background-color: #6c757d;">取消</button>
+                <button class="btn" onclick="saveLimits()">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentProjectId = '';
         let authInProgress = false;
@@ -1186,6 +1427,10 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             // 如果切换到文件管理页面，自动加载数据
             if (tabName === 'manage') {
                 refreshCredsStatus();
+            }
+            // 如果切换到使用统计页面，自动加载统计
+            if (tabName === 'usage') {
+                refreshUsageStats();
             }
             // 如果切换到配置管理页面，自动加载配置
             if (tabName === 'config') {
@@ -2597,6 +2842,275 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             console.log('Status section exists:', !!document.getElementById('statusSection'));
             showStatus('请输入密码登录', 'info');
         };
+
+        // =====================================================================
+        // 使用统计相关函数
+        // =====================================================================
+        
+        let usageStatsData = {};
+        let currentEditingFile = '';
+
+        // 刷新使用统计
+        async function refreshUsageStats() {
+            const usageLoading = document.getElementById('usageLoading');
+            const usageList = document.getElementById('usageList');
+            
+            try {
+                usageLoading.style.display = 'block';
+                usageList.innerHTML = '';
+                
+                // 获取所有文件的使用统计
+                const [statsResponse, aggregatedResponse] = await Promise.all([
+                    fetch('/usage/stats', {
+                        method: 'GET',
+                        headers: getAuthHeaders()
+                    }),
+                    fetch('/usage/aggregated', {
+                        method: 'GET',
+                        headers: getAuthHeaders()
+                    })
+                ]);
+                
+                const statsData = await statsResponse.json();
+                const aggregatedData = await aggregatedResponse.json();
+                
+                if (statsResponse.ok && aggregatedResponse.ok) {
+                    usageStatsData = statsData.data;
+                    
+                    // 更新概览统计
+                    document.getElementById('totalApiCalls').textContent = aggregatedData.data.total_all_model_calls || 0;
+                    document.getElementById('geminiProCalls').textContent = aggregatedData.data.total_gemini_2_5_pro_calls || 0;
+                    document.getElementById('totalFiles').textContent = aggregatedData.data.total_files || 0;
+                    
+                    // 渲染使用统计列表
+                    renderUsageList();
+                    
+                    showStatus(`已加载 ${aggregatedData.data.total_files} 个文件的使用统计`, 'success');
+                } else {
+                    showStatus('加载使用统计失败', 'error');
+                }
+            } catch (error) {
+                console.error('refreshUsageStats error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            } finally {
+                usageLoading.style.display = 'none';
+            }
+        }
+        
+        // 渲染使用统计列表
+        function renderUsageList() {
+            const usageList = document.getElementById('usageList');
+            usageList.innerHTML = '';
+            
+            if (Object.keys(usageStatsData).length === 0) {
+                usageList.innerHTML = '<p style="text-align: center; color: #666;">暂无使用统计数据</p>';
+                return;
+            }
+            
+            for (const [filename, stats] of Object.entries(usageStatsData)) {
+                const card = createUsageCard(filename, stats);
+                usageList.appendChild(card);
+            }
+        }
+        
+        // 创建使用统计卡片
+        function createUsageCard(filename, stats) {
+            const div = document.createElement('div');
+            div.className = 'usage-card';
+            
+            // 计算使用百分比
+            const geminiPercent = Math.min((stats.gemini_2_5_pro_calls / stats.daily_limit_gemini_2_5_pro) * 100, 100);
+            const totalPercent = Math.min((stats.total_calls / stats.daily_limit_total) * 100, 100);
+            
+            // 确定进度条颜色
+            function getProgressClass(percent) {
+                if (percent >= 90) return 'danger';
+                if (percent >= 70) return 'warning';
+                return 'gemini';
+            }
+            
+            function getTotalProgressClass(percent) {
+                if (percent >= 90) return 'danger';
+                if (percent >= 70) return 'warning';
+                return 'total';
+            }
+            
+            // 格式化时间
+            function formatTime(isoString) {
+                if (!isoString) return '未知';
+                try {
+                    const date = new Date(isoString);
+                    return date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+                } catch (e) {
+                    return '格式错误';
+                }
+            }
+            
+            div.innerHTML = `
+                <div class="usage-header">
+                    <div class="usage-filename">${filename}</div>
+                </div>
+                
+                <div class="usage-progress">
+                    <div class="usage-progress-label">
+                        <span>Gemini 2.5 Pro</span>
+                        <span>${stats.gemini_2_5_pro_calls}/${stats.daily_limit_gemini_2_5_pro} (${geminiPercent.toFixed(1)}%)</span>
+                    </div>
+                    <div class="usage-progress-bar">
+                        <div class="usage-progress-fill ${getProgressClass(geminiPercent)}" style="width: ${geminiPercent}%"></div>
+                    </div>
+                </div>
+                
+                <div class="usage-progress">
+                    <div class="usage-progress-label">
+                        <span>所有模型</span>
+                        <span>${stats.total_calls}/${stats.daily_limit_total} (${totalPercent.toFixed(1)}%)</span>
+                    </div>
+                    <div class="usage-progress-bar">
+                        <div class="usage-progress-fill ${getTotalProgressClass(totalPercent)}" style="width: ${totalPercent}%"></div>
+                    </div>
+                </div>
+                
+                <div class="usage-info">
+                    <div class="usage-info-item" style="grid-column: 1 / -1;">
+                        <span class="usage-info-label">下次重置时间</span>
+                        <span class="usage-info-value">${formatTime(stats.next_reset_time)}</span>
+                    </div>
+                </div>
+                
+                <div class="usage-actions">
+                    <button class="usage-btn limits" onclick="openLimitsModal('${filename}')">设置限制</button>
+                    <button class="usage-btn reset" onclick="resetSingleUsageStats('${filename}')">重置统计</button>
+                </div>
+            `;
+            
+            return div;
+        }
+        
+        // 打开限制设置弹窗
+        function openLimitsModal(filename) {
+            const stats = usageStatsData[filename];
+            if (!stats) {
+                showStatus('找不到文件统计数据', 'error');
+                return;
+            }
+            
+            currentEditingFile = filename;
+            document.getElementById('modalFilename').value = filename;
+            document.getElementById('modalGeminiLimit').value = stats.daily_limit_gemini_2_5_pro;
+            document.getElementById('modalTotalLimit').value = stats.daily_limit_total;
+            document.getElementById('limitsModal').style.display = 'block';
+        }
+        
+        // 关闭限制设置弹窗
+        function closeLimitsModal() {
+            document.getElementById('limitsModal').style.display = 'none';
+            currentEditingFile = '';
+        }
+        
+        // 保存限制设置
+        async function saveLimits() {
+            const geminiLimit = parseInt(document.getElementById('modalGeminiLimit').value);
+            const totalLimit = parseInt(document.getElementById('modalTotalLimit').value);
+            
+            if (isNaN(geminiLimit) || geminiLimit < 1) {
+                showStatus('Gemini 2.5 Pro 限制必须是大于0的数字', 'error');
+                return;
+            }
+            
+            if (isNaN(totalLimit) || totalLimit < 1) {
+                showStatus('总调用限制必须是大于0的数字', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/usage/update-limits', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        filename: currentEditingFile,
+                        gemini_2_5_pro_limit: geminiLimit,
+                        total_limit: totalLimit
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus(data.message, 'success');
+                    closeLimitsModal();
+                    // 刷新统计数据
+                    await refreshUsageStats();
+                } else {
+                    showStatus(`设置失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('saveLimits error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+        
+        // 重置单个文件的使用统计
+        async function resetSingleUsageStats(filename) {
+            if (!confirm(`确定要重置 ${filename} 的使用统计吗？`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/usage/reset', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ filename: filename })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus(data.message, 'success');
+                    await refreshUsageStats();
+                } else {
+                    showStatus(`重置失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('resetSingleUsageStats error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+        
+        // 重置所有使用统计
+        async function resetAllUsageStats() {
+            if (!confirm('确定要重置所有文件的使用统计吗？此操作不可恢复！')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/usage/reset', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({})  // 不提供filename表示重置所有
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus(data.message, 'success');
+                    await refreshUsageStats();
+                } else {
+                    showStatus(`重置失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('resetAllUsageStats error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+        
+        // 关闭弹窗当点击弹窗外部时
+        window.onclick = function(event) {
+            const modal = document.getElementById('limitsModal');
+            if (event.target == modal) {
+                closeLimitsModal();
+            }
+        }
     </script>
 </body>
 </html>

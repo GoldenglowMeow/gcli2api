@@ -20,6 +20,7 @@ from .auth_api import (
     load_credentials_from_env, clear_env_credentials
 )
 from .credential_manager import CredentialManager
+from .usage_stats import get_usage_stats, get_aggregated_stats
 import config
 
 # 创建路由器
@@ -1204,4 +1205,122 @@ async def websocket_logs(websocket: WebSocket):
         log.error(f"WebSocket logs error: {e}")
     finally:
         manager.disconnect(websocket)
+
+
+# =============================================================================
+# Usage Statistics API (使用统计API)
+# =============================================================================
+
+@router.get("/usage/stats")
+async def get_usage_statistics(filename: Optional[str] = None, token: str = Depends(verify_token)):
+    """
+    获取使用统计信息
+    
+    Args:
+        filename: 可选，指定凭证文件名。如果不提供则返回所有文件的统计
+    
+    Returns:
+        usage statistics for the specified file or all files
+    """
+    try:
+        stats = await get_usage_stats(filename)
+        return JSONResponse(content={
+            "success": True,
+            "data": stats
+        })
+    except Exception as e:
+        log.error(f"获取使用统计失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/usage/aggregated")
+async def get_aggregated_usage_statistics(token: str = Depends(verify_token)):
+    """
+    获取聚合使用统计信息
+    
+    Returns:
+        Aggregated statistics across all credential files
+    """
+    try:
+        stats = await get_aggregated_stats()
+        return JSONResponse(content={
+            "success": True,
+            "data": stats
+        })
+    except Exception as e:
+        log.error(f"获取聚合统计失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UsageLimitsUpdateRequest(BaseModel):
+    filename: str
+    gemini_2_5_pro_limit: Optional[int] = None
+    total_limit: Optional[int] = None
+
+
+@router.post("/usage/update-limits")
+async def update_usage_limits(request: UsageLimitsUpdateRequest, token: str = Depends(verify_token)):
+    """
+    更新指定凭证文件的每日使用限制
+    
+    Args:
+        request: 包含文件名和新限制值的请求
+    
+    Returns:
+        Success message
+    """
+    try:
+        from .usage_stats import get_usage_stats_instance
+        stats_instance = await get_usage_stats_instance()
+        
+        await stats_instance.update_daily_limits(
+            filename=request.filename,
+            gemini_2_5_pro_limit=request.gemini_2_5_pro_limit,
+            total_limit=request.total_limit
+        )
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"已更新 {request.filename} 的使用限制"
+        })
+        
+    except Exception as e:
+        log.error(f"更新使用限制失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UsageResetRequest(BaseModel):
+    filename: Optional[str] = None
+
+
+@router.post("/usage/reset")
+async def reset_usage_statistics(request: UsageResetRequest, token: str = Depends(verify_token)):
+    """
+    重置使用统计
+    
+    Args:
+        request: 包含可选文件名的请求。如果不提供文件名则重置所有统计
+    
+    Returns:
+        Success message
+    """
+    try:
+        from .usage_stats import get_usage_stats_instance
+        stats_instance = await get_usage_stats_instance()
+        
+        await stats_instance.reset_stats(filename=request.filename)
+        
+        if request.filename:
+            message = f"已重置 {request.filename} 的使用统计"
+        else:
+            message = "已重置所有文件的使用统计"
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": message
+        })
+        
+    except Exception as e:
+        log.error(f"重置使用统计失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
