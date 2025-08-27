@@ -1,5 +1,34 @@
 #!/bin/bash
 
+# Termux镜像设置脚本 - 设置为Cloudflare镜像
+# 作者: 为Termux用户提供快速镜像切换
+
+echo "正在设置Termux镜像为Cloudflare镜像..."
+
+# 备份原始sources.list文件
+if [ -f "$PREFIX/etc/apt/sources.list" ]; then
+    echo "备份原始sources.list文件..."
+    cp "$PREFIX/etc/apt/sources.list" "$PREFIX/etc/apt/sources.list.backup.$(date +%Y%m%d_%H%M%S)"
+fi
+
+# 写入新的镜像源
+echo "写入新的镜像源配置..."
+cat > "$PREFIX/etc/apt/sources.list" << 'EOF'
+# Cloudflare镜像源
+deb https://packages-cf.termux.dev/apt/termux-main stable main
+EOF
+
+echo "镜像源已更新为: https://packages-cf.termux.dev/apt/termux-main"
+
+# 更新包列表
+echo "正在更新包列表..."
+apt update
+
+echo "✅ Termux镜像设置完成！"
+echo "📁 原始配置已备份到: $PREFIX/etc/apt/sources.list.backup.*"
+echo "🔄 如需恢复原始镜像，可以运行:"
+echo "   cp \$PREFIX/etc/apt/sources.list.backup.* \$PREFIX/etc/apt/sources.list && apt update"
+
 # 检查是否需要更新包管理器和安装软件
 need_update=false
 packages_to_install=""
