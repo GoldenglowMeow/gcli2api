@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# Termux镜像设置脚本 - 设置为Cloudflare镜像
-# 作者: 为Termux用户提供快速镜像切换
+if [ "$(whoami)" = "root" ]; then
+    echo "检测到root用户，正在退出..."
+    exit
+fi
 
 echo "正在设置Termux镜像为Cloudflare镜像..."
 
