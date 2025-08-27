@@ -11,7 +11,15 @@ from log import log
 # 反截断配置
 DONE_MARKER = "[done]"
 MAX_CONTINUATION_ATTEMPTS = 3
-CONTINUATION_PROMPT = "\n\n请继续输出剩余内容，在结束时输出[done]标记。"
+CONTINUATION_PROMPT = """请从刚才被截断的地方继续输出剩余的所有内容。
+
+重要提醒：
+1. 不要重复前面已经输出的内容
+2. 直接继续输出，无需任何前言或解释
+3. 当你完整完成所有内容输出后，必须在最后一行单独输出：[done]
+4. [done]标记表示你的回答已经完全结束，这是必需的结束标记
+
+现在请继续输出："""
 
 def apply_anti_truncation(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -36,7 +44,24 @@ def apply_anti_truncation(payload: Dict[str, Any]) -> Dict[str, Any]:
     
     # 添加反截断指令
     anti_truncation_instruction = {
-        "text": f"重要提醒：当你完成回答时，请在输出的最后添加标记 {DONE_MARKER} 以表示回答完整结束。这非常重要，请务必记住。"
+        "text": f"""严格执行以下输出结束规则：
+
+1. 当你完成完整回答时，必须在输出的最后单独一行输出：{DONE_MARKER}
+2. {DONE_MARKER} 标记表示你的回答已经完全结束，这是必需的结束标记
+3. 只有输出了 {DONE_MARKER} 标记，系统才认为你的回答是完整的
+4. 如果你的回答被截断，系统会要求你继续输出剩余内容
+5. 无论回答长短，都必须以 {DONE_MARKER} 标记结束
+
+示例格式：
+```
+你的回答内容...
+更多回答内容...
+{DONE_MARKER}
+```
+
+注意：{DONE_MARKER} 必须单独占一行，前面不要有任何其他字符。
+
+这个规则对于确保输出完整性极其重要，请严格遵守。"""
     }
     
     # 检查是否已经包含反截断指令
@@ -131,7 +156,7 @@ class AntiTruncationStreamProcessor:
                             chunk_content += content
                             
                             # 检查是否包含done标记
-                            if DONE_MARKER.lower() in content.lower():
+                            if self._check_done_marker_in_chunk_content(content):
                                 found_done_marker = True
                                 log.info("Anti-truncation: Found [done] marker in chunk")
                         
@@ -149,9 +174,16 @@ class AntiTruncationStreamProcessor:
                     yield b'data: [DONE]\n\n'
                     return
                 
+                # 最后再检查一次累积的内容（防止done标记跨chunk出现）
+                if self._check_done_marker_in_text(self.collected_content):
+                    log.info("Anti-truncation: Found [done] marker in accumulated content")
+                    yield b'data: [DONE]\n\n'
+                    return
+                
                 # 如果没找到done标记且不是最后一次尝试，准备续传
                 if self.current_attempt < self.max_attempts:
-                    log.info(f"Anti-truncation: No [done] marker found, preparing continuation (attempt {self.current_attempt + 1})")
+                    log.info(f"Anti-truncation: No [done] marker found in output (length: {len(self.collected_content)}), preparing continuation (attempt {self.current_attempt + 1})")
+                    log.debug(f"Anti-truncation: Current collected content ends with: {'...' + self.collected_content[-100:] if len(self.collected_content) > 100 else self.collected_content}")
                     # 在下一次循环中会继续
                     continue
                 else:
@@ -202,10 +234,19 @@ class AntiTruncationStreamProcessor:
                 "parts": [{"text": self.collected_content}]
             })
         
+        # 构建具体的续写指令，包含前面的内容摘要
+        content_summary = ""
+        if len(self.collected_content) > 200:
+            content_summary = f"\n\n前面你已经输出了约 {len(self.collected_content)} 个字符的内容，结尾是：\n\"...{self.collected_content[-100:]}\""
+        elif self.collected_content:
+            content_summary = f"\n\n前面你已经输出的内容是：\n\"{self.collected_content}\""
+        
+        detailed_continuation_prompt = f"""{CONTINUATION_PROMPT}{content_summary}"""
+        
         # 添加继续指令
         continuation_message = {
-            "role": "user",
-            "parts": [{"text": CONTINUATION_PROMPT}]
+            "role": "user", 
+            "parts": [{"text": detailed_continuation_prompt}]
         }
         new_contents.append(continuation_message)
         
@@ -251,8 +292,9 @@ class AntiTruncationStreamProcessor:
             
             # 检查是否包含done标记
             text_content = self._extract_content_from_response(response_data)
+            has_done_marker = self._check_done_marker_in_text(text_content)
             
-            if DONE_MARKER.lower() not in text_content.lower() and self.current_attempt < self.max_attempts:
+            if not has_done_marker and self.current_attempt < self.max_attempts:
                 log.info("Anti-truncation: Non-streaming response needs continuation")
                 self.collected_content += text_content
                 # 递归处理续传
@@ -271,6 +313,37 @@ class AntiTruncationStreamProcessor:
                     "code": 500
                 }
             }).encode()
+    
+    def _check_done_marker_in_text(self, text: str) -> bool:
+        """检查文本中是否包含done标记（严格检测）"""
+        if not text:
+            return False
+        
+        # 支持的done标记变体
+        done_variants = [
+            "[done]",
+            "[DONE]", 
+            "[Done]",
+            "【done】",
+            "【DONE】",
+            "[完成]",
+            "[结束]"
+        ]
+        
+        # 分行检查，每行去掉空白后检查
+        lines = text.strip().split('\n')
+        for line in lines:
+            line_clean = line.strip()
+            # 检查整行是否就是done标记的任何变体
+            for variant in done_variants:
+                if line_clean == variant or line_clean.endswith(variant):
+                    return True
+        
+        return False
+    
+    def _check_done_marker_in_chunk_content(self, content: str) -> bool:
+        """检查单个chunk内容中是否包含done标记"""
+        return self._check_done_marker_in_text(content)
     
     def _extract_content_from_response(self, data: Dict[str, Any]) -> str:
         """从响应数据中提取文本内容"""
