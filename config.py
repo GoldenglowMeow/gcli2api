@@ -33,11 +33,13 @@ def get_bot_api_key():
     
     # 从配置文件获取
     try:
-        config_path = os.getenv("CONFIG_PATH", "config.toml")
-        if os.path.exists(config_path):
-            config_data = toml.load(config_path)
+        # 使用与其他配置相同的路径 (creds/config.toml)
+        config_file = os.path.join(CREDENTIALS_DIR, "config.toml")
+        if os.path.exists(config_file):
+            config_data = toml.load(config_file)
             return config_data.get("bot_api_key", "")
-    except Exception:
+    except Exception as e:
+        print(f"读取Bot API Key出错: {e}")
         pass
     
     return ""
