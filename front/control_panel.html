@@ -1429,7 +1429,7 @@ function toggleUserExpand(userId) {
             setConfigField('port', currentConfig.port || 7861);
             setConfigField('configApiPassword', currentConfig.api_password || '');
             setConfigField('configPanelPassword', currentConfig.panel_password || '');
-            setConfigField('configPassword', currentConfig.password || 'pwd');
+            setConfigField('configPassword', currentConfig.password || '');
             setConfigField('codeAssistEndpoint', currentConfig.code_assist_endpoint || '');
             setConfigField('credentialsDir', currentConfig.credentials_dir || '');
             setConfigField('proxy', currentConfig.proxy || '');
@@ -1480,7 +1480,9 @@ function toggleUserExpand(userId) {
                     retry_429_interval: parseFloat(document.getElementById('retry429Interval').value) || 0.1,
                     log_level: document.getElementById('logLevel').value || 'info',
                     log_file: document.getElementById('logFile').value.trim() || 'log.txt',
-                    anti_truncation_max_attempts: parseInt(document.getElementById('antiTruncationMaxAttempts').value) || 3
+                    anti_truncation_max_attempts: parseInt(document.getElementById('antiTruncationMaxAttempts').value) || 3,
+                    // 保留bot_api_key值，确保不会被覆盖
+                    bot_api_key: currentConfig.bot_api_key || ''
                 };
                 const response = await fetch('/config/save', {
                     method: 'POST',

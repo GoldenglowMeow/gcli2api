@@ -216,6 +216,15 @@ async def get_config(token: str = Depends(verify_token)):
         if os.getenv(env_var):
             env_locked.append(key)
 
+    # 服务器基本配置
+    add_config("host", config.get_server_host, "HOST")
+    add_config("port", config.get_server_port, "PORT")
+    add_config("api_password", config.get_api_password, "API_PASSWORD")
+    add_config("panel_password", config.get_panel_password, "PANEL_PASSWORD")
+    add_config("password", config.get_server_password, "PASSWORD")
+    add_config("credentials_dir", config.get_credentials_dir, "CREDENTIALS_DIR")
+    
+    # API和服务配置
     add_config("code_assist_endpoint", config.get_code_assist_endpoint, "CODE_ASSIST_ENDPOINT")
     add_config("proxy", lambda: config.get_proxy_config() or "", "PROXY")
     add_config("auto_ban_enabled", config.get_auto_ban_enabled, "AUTO_BAN")
@@ -228,7 +237,7 @@ async def get_config(token: str = Depends(verify_token)):
     add_config("retry_429_interval", config.get_retry_429_interval, "RETRY_429_INTERVAL")
     add_config("log_level", config.get_log_level, "LOG_LEVEL")
     add_config("log_file", config.get_log_file, "LOG_FILE")
-    add_config("panel_password", config.get_panel_password, "PANEL_PASSWORD")
+    add_config("anti_truncation_max_attempts", config.get_anti_truncation_max_attempts, "ANTI_TRUNCATION_MAX_ATTEMPTS")
     add_config("bot_api_key", config.get_bot_api_key, "BOT_API_KEY")
 
     return JSONResponse(content={"config": current_config, "env_locked": list(set(env_locked))})
