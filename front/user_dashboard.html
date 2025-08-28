@@ -628,6 +628,24 @@
     <script>
         // JavaScript部分保持不变，因为CSS的类名和ID都没有改变，功能可以无缝衔接。
         let selectedFiles = [];
+        
+        // 添加全局请求拦截器，处理401未授权响应
+        const originalFetch = window.fetch;
+        window.fetch = async function(url, options = {}) {
+            const response = await originalFetch(url, options);
+            
+            // 如果响应状态码是401（未授权/会话过期），自动重定向到登录页面
+            if (response.status === 401) {
+                console.log('会话已过期，正在重定向到登录页面...');
+                window.location.href = '/';
+                return new Response(JSON.stringify({ detail: "会话已过期，请重新登录" }), {
+                    status: 401,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            }
+            return response;
+        };
+        
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', function() {
             checkAuthAndLoadProfile();
