@@ -7,7 +7,7 @@ import httpx
 from fastapi import Response
 from fastapi.responses import StreamingResponse
 
-from .credential_manager import CredentialManager
+from .user_aware_credential_manager import UserCredentialManager
 from .utils import get_user_agent
 from config import (
     CODE_ASSIST_ENDPOINT,
@@ -42,7 +42,7 @@ def _create_error_response(message: str, status_code: int = 500) -> Response:
         media_type="application/json"
     )
 
-async def _handle_api_error(credential_manager: CredentialManager, status_code: int, response_content: str = ""):
+async def _handle_api_error(credential_manager: UserCredentialManager, status_code: int, response_content: str = ""):
     """Handle API errors by rotating credentials when needed. Error recording should be done before calling this function."""
     if status_code == 429 and credential_manager:
         if response_content:
@@ -59,7 +59,7 @@ async def _handle_api_error(credential_manager: CredentialManager, status_code: 
             log.warning(f"Google API returned status {status_code} - auto ban triggered, rotating credentials")
         await credential_manager.rotate_to_next_credential()
 
-async def _prepare_request_headers_and_payload(payload: dict, creds, credential_manager: CredentialManager):
+async def _prepare_request_headers_and_payload(payload: dict, creds, credential_manager: UserCredentialManager):
     """Prepare request headers and final payload."""
     headers = {
         "Authorization": f"Bearer {creds.token}",
@@ -87,7 +87,7 @@ async def _prepare_request_headers_and_payload(payload: dict, creds, credential_
     
     return headers, final_payload
 
-async def send_gemini_request(payload: dict, is_streaming: bool = False, creds = None, credential_manager: CredentialManager = None) -> Response:
+async def send_gemini_request(payload: dict, is_streaming: bool = False, creds = None, credential_manager: UserCredentialManager = None) -> Response:
     """
     Send a request to Google's Gemini API.
     
@@ -252,7 +252,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
     return _create_error_response("Max retries exceeded", 429)
 
 
-def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client: httpx.AsyncClient, credential_manager: CredentialManager = None, model_name: str = "") -> StreamingResponse:
+def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client: httpx.AsyncClient, credential_manager: UserCredentialManager = None, model_name: str = "") -> StreamingResponse:
     """Handle streaming response with complete resource lifecycle management."""
     
     # 检查HTTP错误
@@ -371,7 +371,7 @@ def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client:
         media_type="text/event-stream"
     )
 
-async def _handle_non_streaming_response(resp: httpx.Response, credential_manager: CredentialManager = None, model_name: str = "") -> Response:
+async def _handle_non_streaming_response(resp: httpx.Response, credential_manager: UserCredentialManager = None, model_name: str = "") -> Response:
     """Handle non-streaming response from Google API."""
     if resp.status_code == 200:
         try:

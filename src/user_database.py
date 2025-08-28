@@ -48,22 +48,7 @@ class UserDatabase:
                     )
                 ''')
                 
-                # 创建用户凭证文件记录表
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS user_credentials (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER NOT NULL,
-                        filename TEXT NOT NULL,
-                        original_filename TEXT NOT NULL,
-                        file_path TEXT NOT NULL,
-                        project_id TEXT,
-                        is_enabled BOOLEAN DEFAULT 1,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        last_used TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (id),
-                        UNIQUE(user_id, filename)
-                    )
-                ''')
+                # 用户凭证文件现在通过文件系统管理，不再需要数据库表
                 
                 conn.commit()
                 log.info("用户数据库初始化完成")
@@ -91,7 +76,7 @@ class UserDatabase:
     
     def generate_api_key(self) -> str:
         """生成API密钥"""
-        return f"gca-{secrets.token_urlsafe(32)}"
+        return f"gg-gcli-{secrets.token_urlsafe(32)}"
     
     def generate_session_token(self) -> str:
         """生成会话令牌"""
@@ -243,6 +228,33 @@ class UserDatabase:
             log.error(f"获取用户信息失败: {e}")
             return None
     
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """通过用户名获取用户信息"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    SELECT id, username, api_key, is_active, created_at
+                    FROM users WHERE username = ? AND is_active = 1
+                ''', (username,))
+                
+                user = cursor.fetchone()
+                if user:
+                    return {
+                        "user_id": user[0],
+                        "username": user[1],
+                        "api_key": user[2],
+                        "is_active": user[3],
+                        "created_at": user[4]
+                    }
+                
+                return None
+                
+        except Exception as e:
+            log.error(f"通过用户名获取用户信息失败: {e}")
+            return None
+    
     def regenerate_api_key(self, user_id: int) -> Dict[str, Any]:
         """重新生成API密钥"""
         try:
@@ -346,6 +358,59 @@ class UserDatabase:
         except Exception as e:
             log.error(f"使会话失效失败: {e}")
             return False
+    
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        """获取所有用户列表"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # 获取所有活跃用户
+                cursor.execute('''
+                    SELECT u.id, u.username, u.created_at, u.last_login, u.is_active
+                    FROM users u
+                    WHERE u.is_active = 1
+                    ORDER BY u.created_at DESC
+                ''')
+
+                users = []
+                for row in cursor.fetchall():
+                    user_id, username, created_at, last_login, is_active = row
+
+                    # 通过文件系统获取用户的凭证数量
+                    credential_count = self._get_user_credential_count(username)
+
+                    users.append({
+                        "user_id": user_id,
+                        "username": username,
+                        "created_at": created_at,
+                        "last_login": last_login,
+                        "is_active": bool(is_active),
+                        "credential_count": credential_count
+                    })
+
+                return users
+
+        except Exception as e:
+            log.error(f"获取用户列表失败: {e}")
+            return []
+
+    def _get_user_credential_count(self, username: str) -> int:
+        """获取用户的凭证文件数量"""
+        try:
+            # 构建用户凭证目录路径
+            user_creds_dir = os.path.join(os.path.dirname(__file__), '..', 'creds', username)
+
+            if not os.path.exists(user_creds_dir):
+                return 0
+
+            # 统计JSON文件数量
+            json_files = [f for f in os.listdir(user_creds_dir) if f.endswith('.json')]
+            return len(json_files)
+
+        except Exception as e:
+            log.warning(f"获取用户 {username} 凭证数量失败: {e}")
+            return 0
 
 # 全局数据库实例
 user_db = UserDatabase()

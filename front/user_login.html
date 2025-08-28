@@ -5,156 +5,152 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>用户登录 - GCLI2API</title>
     <style>
+        /* 
+         * =============================================
+         * Modern Flat Dark Theme - Login Page
+         * Adapted from Dashboard styles by AI
+         * =============================================
+         */
+        /* 1. 继承自 Dashboard 的 CSS 变量定义 */
+        :root {
+            --bg-primary: #1a1d21;      /* 主背景色 */
+            --bg-secondary: #2c3035;    /* 容器背景色 */
+            --bg-tertiary: #3a3f44;     /* 元素背景色 (如输入框) */
+            --border-color: #454a50;    /* 边框颜色 */
+            --text-primary: #d0d0d0;    /* 主要文字颜色 (标题等) */
+            --text-secondary: #a0a5ad;  /* 次要文字颜色 (描述、标签) */
+            --text-muted: #757b81;      /* 静音文字颜色 (帮助文本) */
+            --accent-primary: #007acc;   /* 主要强调色 (按钮、链接) */
+            --accent-primary-hover: #0098ff; /* 强调色悬停 */
+            --color-danger: #c93c37;     /* 危险/错误 */
+            --color-success: #43a047;    /* 成功 */
+            --font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        /* 2. 基础和全局样式 */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            max-width: 500px;
-            margin: 0 auto;
+            font-family: var(--font-family-sans);
+            background-color: var(--bg-primary);
+            color: var(--text-secondary);
+            margin: 0;
             padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            box-sizing: border-box;
         }
+        /* 3. 登录容器样式 */
         .container {
-            background: white;
+            background-color: var(--bg-secondary);
             padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             width: 100%;
-            max-width: 450px;
+            max-width: 400px;
         }
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 28px;
-            font-weight: 300;
-        }
+        /* 4. Logo 和标题 */
         .logo {
             text-align: center;
             margin-bottom: 30px;
         }
+        h1 {
+            color: var(--text-primary);
+            margin: 0 0 10px 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .logo p {
+            color: var(--text-secondary);
+            margin: 0;
+        }
+        /* 5. 表单元素 (原标签页样式已移除) */
         .form-group {
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
         label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #555;
-            font-size: 14px;
+            color: var(--text-secondary);
         }
         input[type="text"], input[type="password"] {
             width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
+            padding: 12px 14px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            border-radius: 6px;
             font-size: 16px;
             box-sizing: border-box;
-            transition: all 0.3s ease;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
         input[type="text"]:focus, input[type="password"]:focus {
-            border-color: #4285f4;
+            border-color: var(--accent-primary);
             outline: none;
-            box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+            box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.3);
         }
+        small {
+            display: block;
+            margin-top: 6px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        /* 6. 按钮 */
         .btn {
-            background: linear-gradient(135deg, #4285f4, #34a853);
-            color: white;
-            padding: 14px 30px;
+            background-color: var(--accent-primary);
+            color: white; /* 按钮文字用纯白更醒目 */
+            padding: 12px 28px;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
             width: 100%;
-            margin-bottom: 15px;
-            font-weight: 600;
-            transition: all 0.3s ease;
+            transition: background-color 0.2s ease;
         }
         .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(66, 133, 244, 0.3);
-        }
-        .btn:active {
-            transform: translateY(0);
+            background-color: var(--accent-primary-hover);
         }
         .btn:disabled {
-            background: #ccc;
+            background-color: #555;
+            color: #999;
             cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
         }
-        .btn.secondary {
-            background: linear-gradient(135deg, #6c757d, #495057);
-            margin-top: 10px;
-        }
+        /* 7. 状态提示信息 */
         .status {
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin: 20px 0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0 0 0;
             font-weight: 500;
+            border: 1px solid transparent;
         }
         .status.success {
-            background: #d4edda;
-            border: 2px solid #c3e6cb;
-            color: #155724;
-            border-left: 4px solid #28a745;
+            background-color: rgba(67, 160, 71, 0.15);
+            border-color: var(--color-success);
+            color: #a5d6a7;
         }
         .status.error {
-            background: #f8d7da;
-            border: 2px solid #f5c6cb;
-            color: #721c24;
-            border-left: 4px solid #dc3545;
-        }
-        .status.info {
-            background: #d1ecf1;
-            border: 2px solid #bee5eb;
-            color: #0c5460;
-            border-left: 4px solid #17a2b8;
+            background-color: rgba(201, 60, 55, 0.15);
+            border-color: var(--color-danger);
+            color: #ef9a9a;
         }
         .hidden {
             display: none;
         }
-        .loading {
-            text-align: center;
-            color: #666;
-        }
-        .tabs {
-            display: flex;
-            border-bottom: 1px solid #ddd;
-            margin-bottom: 20px;
-        }
-        .tab {
-            padding: 10px 20px;
-            cursor: pointer;
-            border: none;
-            background: #f5f5f5;
-            border-bottom: 2px solid transparent;
-            flex: 1;
-            text-align: center;
-        }
-        .tab.active {
-            background: white;
-            border-bottom-color: #4285f4;
-            color: #4285f4;
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
+        /* 8. 底部链接 */
         .link {
             text-align: center;
             margin-top: 20px;
         }
         .link a {
-            color: #4285f4;
+            color: var(--accent-primary);
             text-decoration: none;
             font-size: 14px;
+            transition: color 0.2s;
         }
         .link a:hover {
+            color: var(--accent-primary-hover);
             text-decoration: underline;
         }
     </style>
@@ -162,17 +158,12 @@
 <body>
     <div class="container">
         <div class="logo">
-            <h1>GCLI2API</h1>
-            <p style="text-align: center; color: #666; margin: 0;">用户登录</p>
-        </div>
-        
-        <div class="tabs">
-            <button class="tab active" onclick="switchTab('login')">登录</button>
-            <button class="tab" onclick="switchTab('register')">注册</button>
+            <h1>GG公益站 | GCLI2API</h1>
+            <p>用户登录</p>
         </div>
         
         <!-- 登录表单 -->
-        <div id="login-tab" class="tab-content active">
+        <div id="login-form-container">
             <form id="loginForm">
                 <div class="form-group">
                     <label for="loginUsername">用户名</label>
@@ -185,143 +176,43 @@
                 <button type="submit" class="btn">登录</button>
             </form>
         </div>
-        
-        <!-- 注册表单 -->
-        <div id="register-tab" class="tab-content">
-            <form id="registerForm">
-                <div class="form-group">
-                    <label for="registerUsername">用户名</label>
-                    <input type="text" id="registerUsername" name="username" required 
-                           pattern="[a-z0-9]+" title="用户名只能包含小写字母和数字">
-                    <small style="color: #666; font-size: 12px;">只能使用小写英文字母和数字</small>
-                </div>
-                <div class="form-group">
-                    <label for="registerPassword">密码</label>
-                    <input type="password" id="registerPassword" name="password" required minlength="6">
-                </div>
-                <div class="form-group">
-                    <label for="confirmPassword">确认密码</label>
-                    <input type="password" id="confirmPassword" name="confirmPassword" required>
-                </div>
-                <button type="submit" class="btn">注册</button>
-            </form>
-        </div>
-        
+
         <div id="status" class="status hidden"></div>
-        
-        <div class="link">
-            <a href="/auth">管理员登录</a>
-        </div>
     </div>
-    
     <script>
-        function switchTab(tabName) {
-            // 隐藏所有标签内容
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            
-            // 移除所有标签的活动状态
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            // 显示选中的标签内容
-            document.getElementById(tabName + '-tab').classList.add('active');
-            
-            // 激活选中的标签
-            event.target.classList.add('active');
-            
-            // 清除状态信息
-            hideStatus();
-        }
-        
         function showStatus(message, type = 'info') {
             const statusDiv = document.getElementById('status');
             statusDiv.textContent = message;
-            statusDiv.className = `status ${type}`;
+            statusDiv.className = `status ${type}`; // 确保只保留 status 和 type 类
             statusDiv.classList.remove('hidden');
         }
-        
+
         function hideStatus() {
-            document.getElementById('status').classList.add('hidden');
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = 'status hidden'; // 重置类名
         }
-        
-        // 登录表单处理
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+            hideStatus(); // 在提交新请求前隐藏旧状态
             const formData = new FormData(e.target);
             const username = formData.get('username');
             const password = formData.get('password');
-            
             try {
-                const response = await fetch('/user/login', {
+                const response = await fetch('/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
-                
                 const result = await response.json();
-                
                 if (response.ok) {
                     showStatus('登录成功，正在跳转...', 'success');
-                    // 设置cookie并跳转到用户面板
                     document.cookie = `user_session=${result.session_id}; path=/; max-age=86400`;
                     setTimeout(() => {
-                        window.location.href = '/user/dashboard';
-                    }, 1000);
+                        window.location.href = '/dashboard';
+                    }, 100);
                 } else {
                     showStatus(result.detail || '登录失败', 'error');
-                }
-            } catch (error) {
-                showStatus('网络错误，请重试', 'error');
-            }
-        });
-        
-        // 注册表单处理
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const formData = new FormData(e.target);
-            const username = formData.get('username');
-            const password = formData.get('password');
-            const confirmPassword = formData.get('confirmPassword');
-            
-            // 验证密码确认
-            if (password !== confirmPassword) {
-                showStatus('两次输入的密码不一致', 'error');
-                return;
-            }
-            
-            // 验证用户名格式
-            if (!/^[a-z0-9]+$/.test(username)) {
-                showStatus('用户名只能包含小写字母和数字', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch('/user/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ username, password })
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    showStatus('注册成功！请登录', 'success');
-                    // 切换到登录标签
-                    setTimeout(() => {
-                        switchTab('login');
-                        document.getElementById('loginUsername').value = username;
-                    }, 1500);
-                } else {
-                    showStatus(result.detail || '注册失败', 'error');
                 }
             } catch (error) {
                 showStatus('网络错误，请重试', 'error');

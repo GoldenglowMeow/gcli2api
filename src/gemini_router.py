@@ -11,8 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional
 
 from .google_api_client import send_gemini_request, build_gemini_payload_from_native
-from .credential_manager import CredentialManager
-from .user_aware_credential_manager import UserAwareCredentialManager
+from .user_aware_credential_manager import UserCredentialManager
 from .user_routes import get_user_by_api_key
 from config import get_config_value, get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
 from .anti_truncation import apply_anti_truncation_to_stream
@@ -23,34 +22,33 @@ from log import log
 router = APIRouter()
 security = HTTPBearer()
 
-# 全局凭证管理器实例
-credential_manager = None
 # 用户凭证管理器实例缓存
 user_credential_managers = {}
-
-@asynccontextmanager
-async def get_credential_manager():
-    """获取全局凭证管理器实例"""
-    global credential_manager
-    if not credential_manager:
-        credential_manager = CredentialManager()
-        await credential_manager.initialize()
-    yield credential_manager
 
 @asynccontextmanager
 async def get_user_credential_manager(username: str):
     """获取用户特定的凭证管理器实例（带缓存）"""
     global user_credential_managers
-    
+
     if username not in user_credential_managers:
         log.debug(f"创建新的用户凭证管理器实例: {username}")
-        user_cred_mgr = UserAwareCredentialManager(username)
+        user_cred_mgr = UserCredentialManager(username)
         await user_cred_mgr.initialize()
         user_credential_managers[username] = user_cred_mgr
     else:
         log.debug(f"复用现有的用户凭证管理器实例: {username}")
-    
+
     yield user_credential_managers[username]
+
+@asynccontextmanager
+async def get_credential_manager():
+    """获取管理员凭证管理器实例"""
+    admin_cred_mgr = UserCredentialManager()
+    await admin_cred_mgr.initialize()
+    try:
+        yield admin_cred_mgr
+    finally:
+        await admin_cred_mgr.close()
 
 async def cleanup_user_credential_managers():
     """清理用户凭证管理器实例缓存"""

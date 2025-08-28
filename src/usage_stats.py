@@ -28,12 +28,14 @@ def _get_next_utc_7am() -> datetime:
 
 class UsageStats:
     """
-    Simplified usage statistics manager with clear reset logic.
+    Distributed usage statistics manager with clear reset logic.
+    Stores statistics in individual user directories instead of a unified file.
     """
-    
+
     def __init__(self):
         self._lock = Lock()
-        self._state_file = os.path.join(CREDENTIALS_DIR, "creds_state.toml")
+        # Legacy unified file for backward compatibility
+        self._legacy_state_file = os.path.join(CREDENTIALS_DIR, "creds_state.toml")
         self._stats_cache: Dict[str, Dict[str, Any]] = {}
         self._initialized = False
     
@@ -41,7 +43,7 @@ class UsageStats:
         """Initialize the usage stats module."""
         if self._initialized:
             return
-        
+
         await self._load_stats()
         self._initialized = True
         log.info("Usage statistics module initialized")
@@ -50,11 +52,48 @@ class UsageStats:
         """Normalize filename to relative path for consistent storage."""
         if not filename:
             return ""
-            
+
         if os.path.sep not in filename and "/" not in filename:
             return filename
-            
+
         return os.path.basename(filename)
+
+    def _get_user_creds_state_file(self, username: str) -> str:
+        """Get the path to user's credential state file."""
+        user_dir = os.path.join(CREDENTIALS_DIR, username)
+        return os.path.join(user_dir, "creds_state.toml")
+
+    def _extract_user_from_cred_file(self, filename: str) -> str:
+        """
+        Extract username from credential filename if it's a full path.
+        Returns 'legacy' for files that don't have user directory structure.
+        """
+        # First normalize the filename
+        normalized = self._normalize_filename(filename)
+
+        # Look for user directory pattern: CREDENTIALS_DIR/username/filename
+        cred_dirs = [d for d in os.listdir(CREDENTIALS_DIR)
+                     if os.path.isdir(os.path.join(CREDENTIALS_DIR, d)) and d != '__pycache__']
+
+        for username in cred_dirs:
+            user_cred_file = os.path.join(CREDENTIALS_DIR, username, normalized)
+            if os.path.exists(user_cred_file):
+                return username
+
+        # If not found in any user directory, treat as legacy
+        return 'legacy'
+
+
+    def _get_usage_storage_path(self, filename: str) -> tuple:
+        """Get the storage path and user for usage stats."""
+        username = self._extract_user_from_cred_file(filename)
+
+        if username == 'legacy':
+            # Use legacy unified file
+            return self._legacy_state_file, username
+        else:
+            # Use distributed storage in user directory
+            return self._get_user_creds_state_file(username), username
     
     def _is_gemini_2_5_pro(self, model_name: str) -> bool:
         """
@@ -91,50 +130,90 @@ class UsageStats:
             return clean_model == "gemini-2.5-pro"
     
     async def _load_stats(self):
-        """Load statistics from the state file."""
+        """Load statistics from distributed user state files."""
+        self._stats_cache = {}
+
         try:
-            if os.path.exists(self._state_file):
-                async with aiofiles.open(self._state_file, "r", encoding="utf-8") as f:
-                    content = await f.read()
-                
-                state_data = toml.loads(content)
-                
-                # Extract usage stats from each credential entry
-                self._stats_cache = {}
-                for filename, cred_data in state_data.items():
-                    if isinstance(cred_data, dict) and "usage_stats" in cred_data:
-                        normalized_filename = self._normalize_filename(filename)
-                        self._stats_cache[normalized_filename] = cred_data["usage_stats"]
-                
-                log.debug(f"Loaded usage statistics for {len(self._stats_cache)} credential files")
-            else:
-                log.info("State file not found, starting with empty statistics")
-                self._stats_cache = {}
+            # Load from individual user directories
+            if os.path.exists(CREDENTIALS_DIR):
+                cred_dirs = [d for d in os.listdir(CREDENTIALS_DIR)
+                             if os.path.isdir(os.path.join(CREDENTIALS_DIR, d)) and d != '__pycache__']
+
+                for username in cred_dirs:
+                    user_creds_file = self._get_user_creds_state_file(username)
+                    if os.path.exists(user_creds_file):
+                        async with aiofiles.open(user_creds_file, "r", encoding="utf-8") as f:
+                            content = await f.read()
+
+                        user_data = toml.loads(content)
+
+                        # Extract usage stats from each credential entry in user's file
+                        for filename, cred_data in user_data.items():
+                            if isinstance(cred_data, dict) and "usage_stats" in cred_data:
+                                # Create full path identifier: username/filename
+                                full_filename = f"{username}/{filename}"
+                                # 使用完整路径作为键，确保能正确识别用户文件
+                                self._stats_cache[full_filename] = cred_data["usage_stats"]
+                                log.debug(f"Loaded distributed usage stats for {full_filename}")
+
+            log.info(f"Loaded usage statistics for {len(self._stats_cache)} credential files")
         except Exception as e:
             log.error(f"Failed to load usage statistics: {e}")
             self._stats_cache = {}
     
     async def _save_stats(self):
-        """Save statistics to the state file."""
+        """Save statistics to distributed user state files."""
         try:
-            # Load existing state
-            state_data = {}
-            if os.path.exists(self._state_file):
-                async with aiofiles.open(self._state_file, "r", encoding="utf-8") as f:
-                    content = await f.read()
-                state_data = toml.loads(content)
-            
-            # Update usage stats for each credential file
+            # Group stats by user directory
+            user_stats = {}  # username -> {filename: stats}
+
             for filename, stats in self._stats_cache.items():
-                if filename not in state_data:
-                    state_data[filename] = {}
-                state_data[filename]["usage_stats"] = stats
-            
-            # Write back to file
-            os.makedirs(os.path.dirname(self._state_file), exist_ok=True)
-            async with aiofiles.open(self._state_file, "w", encoding="utf-8") as f:
-                await f.write(toml.dumps(state_data))
-                
+                # Extract username from filename
+                username = self._extract_user_from_cred_file(filename)
+
+                # Skip legacy files (they shouldn't exist in new architecture)
+                if username == 'legacy':
+                    log.warning(f"Skipping legacy file {filename} - new architecture doesn't support legacy storage")
+                    continue
+
+                # Store in user directory
+                if username not in user_stats:
+                    user_stats[username] = {}
+
+                # Extract just the filename part (without username/)
+                if '/' in filename:
+                    filename_part = filename.split('/', 1)[1]
+                else:
+                    filename_part = filename
+
+                user_stats[username][filename_part] = stats
+
+            # Save to individual user directories
+            for username, user_stat_data in user_stats.items():
+                user_creds_file = self._get_user_creds_state_file(username)
+
+                try:
+                    # Load existing user state or create new
+                    user_state_data = {}
+                    if os.path.exists(user_creds_file):
+                        async with aiofiles.open(user_creds_file, "r", encoding="utf-8") as f:
+                            content = await f.read()
+                        user_state_data = toml.loads(content)
+
+                    # Update usage stats for each credential file in user's state
+                    for filename, stats in user_stat_data.items():
+                        if filename not in user_state_data:
+                            user_state_data[filename] = {}
+                        user_state_data[filename]["usage_stats"] = stats
+
+                    # Write back to user's file
+                    os.makedirs(os.path.dirname(user_creds_file), exist_ok=True)
+                    async with aiofiles.open(user_creds_file, "w", encoding="utf-8") as f:
+                        await f.write(toml.dumps(user_state_data))
+
+                except Exception as e:
+                    log.error(f"Failed to save usage statistics for user {username}: {e}")
+
             log.debug("Usage statistics saved successfully")
         except Exception as e:
             log.error(f"Failed to save usage statistics: {e}")

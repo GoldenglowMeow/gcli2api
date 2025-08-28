@@ -1143,27 +1143,7 @@ def save_uploaded_credential(file_content: str, original_filename: str) -> Dict[
         }
 
 
-def batch_upload_credentials(files_data: List[Dict[str, str]]) -> Dict[str, Any]:
-    """批量上传认证文件"""
-    results = []
-    success_count = 0
-    
-    for file_data in files_data:
-        filename = file_data.get('filename', 'unknown.json')
-        content = file_data.get('content', '')
-        
-        result = save_uploaded_credential(content, filename)
-        result['filename'] = filename
-        results.append(result)
-        
-        if result['success']:
-            success_count += 1
-    
-    return {
-        'uploaded_count': success_count,
-        'total_count': len(files_data),
-        'results': results
-    }
+
 
 
 # 环境变量批量导入功能

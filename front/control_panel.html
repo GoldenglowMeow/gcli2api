@@ -152,73 +152,6 @@
         .tab-content.active {
             display: block;
         }
-        .upload-area {
-            border: 2px dashed #ddd;
-            border-radius: 5px;
-            padding: 40px;
-            text-align: center;
-            background-color: #fafafa;
-            margin: 20px 0;
-            cursor: pointer;
-            transition: border-color 0.3s;
-        }
-        .upload-area:hover {
-            border-color: #4285f4;
-        }
-        .upload-area.dragover {
-            border-color: #4285f4;
-            background-color: #f0f8ff;
-        }
-        .file-list {
-            margin: 20px 0;
-        }
-        .file-item {
-            background-color: #f8f9fa;
-            border: 1px solid #e1e4e8;
-            border-radius: 3px;
-            padding: 10px;
-            margin: 5px 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .file-item .file-name {
-            font-family: monospace;
-            color: #333;
-        }
-        .file-item .file-size {
-            color: #666;
-            font-size: 12px;
-        }
-        .file-item .remove-btn {
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            padding: 2px 8px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        .upload-progress {
-            background-color: #f8f9fa;
-            border: 1px solid #e1e4e8;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 20px 0;
-        }
-        .progress-bar {
-            width: 100%;
-            height: 20px;
-            background-color: #e9ecef;
-            border-radius: 10px;
-            overflow: hidden;
-            margin: 10px 0;
-        }
-        .progress-fill {
-            height: 100%;
-            background-color: #28a745;
-            transition: width 0.3s ease;
-        }
         
         /* 文件管理样式 */
         .cred-card {
@@ -438,11 +371,136 @@
         
         /* 批量操作样式 */
         .batch-controls {
-            background-color: #f8f9fa;
-            border: 1px solid #e1e4e8;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 20px;
+        }
+        
+        /* 视图切换按钮样式 */
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .toggle-btn {
+            padding: 8px 16px;
+            border: 1px solid #007bff;
+            background: white;
+            color: #007bff;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .toggle-btn:hover {
+            background: #e7f3ff;
+        }
+        
+        .toggle-btn.active {
+            background: #007bff;
+            color: white;
+        }
+        
+        /* 用户列表样式 */
+        .user-item {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background: white;
+            overflow: hidden;
+        }
+        
+        .user-header {
+            padding: 15px;
+            background: #f8f9fa;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.3s ease;
+        }
+        
+        .user-header:hover {
+            background: #e9ecef;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .user-name {
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+        }
+        
+        .user-stats {
+            display: flex;
+            gap: 15px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .user-expand-icon {
+            font-size: 18px;
+            color: #666;
+            transition: transform 0.3s ease;
+        }
+        
+        .user-item.expanded .user-expand-icon {
+            transform: rotate(90deg);
+        }
+        
+        .user-creds {
+            display: none;
+            padding: 0 15px 15px 15px;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .user-item.expanded .user-creds {
+            display: block;
+        }
+        
+        .user-creds-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 10px 0;
+        }
+        
+        .user-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .user-action-btn {
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .user-action-btn:hover {
+            background: #f8f9fa;
+        }
+        
+        .user-action-btn.upload {
+            border-color: #28a745;
+            color: #28a745;
+        }
+        
+        .user-action-btn.upload:hover {
+            background: #28a745;
+            color: white;
         }
         .checkbox-container {
             display: flex;
@@ -712,6 +770,91 @@
             margin-top: 5px;
         }
         
+        /* 用户选择器搜索样式 */
+        .user-filter-container {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+
+        .user-filter-container label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .search-select-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        .search-select-container input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .search-select-container input:focus {
+            border-color: #4285f4;
+            outline: none;
+        }
+
+        .search-select-options {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background-color: white;
+            border: 2px solid #4285f4;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .search-select-option {
+            padding: 10px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+
+        .search-select-option:hover {
+            background-color: #f8f9fa;
+        }
+
+        .search-select-option.selected {
+            background-color: #4285f4;
+            color: white;
+        }
+
+        .search-select-option:last-child {
+            border-bottom: none;
+        }
+
+        .selected-user-display {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .selected-user-display span:first-child {
+            font-weight: bold;
+        }
+
+        .selected-user-display #selectedUserDisplay {
+            color: #007bff;
+            font-weight: bold;
+        }
+
         /* 限制设置弹窗样式 */
         .modal {
             display: none;
@@ -782,7 +925,6 @@
             <!-- 标签页 -->
             <div class="tabs">
                 <button class="tab active" onclick="switchTab('oauth')">OAuth认证</button>
-                <button class="tab" onclick="switchTab('upload')">批量上传</button>
                 <button class="tab" onclick="switchTab('envload')">环境变量</button>
                 <button class="tab" onclick="switchTab('manage')">文件管理</button>
                 <button class="tab" onclick="switchTab('usage')">使用统计</button>
@@ -843,35 +985,8 @@
                 </div>
             </div>
 
-            <!-- 批量上传标签页 -->
-            <div id="uploadTab" class="tab-content">
-                <h3>批量上传认证文件</h3>
-                <p>支持上传多个JSON格式的认证文件到服务器</p>
-                
-                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-                    <p>点击选择文件或拖拽文件到此区域</p>
-                    <p style="color: #666; font-size: 14px;">支持 .json 格式文件</p>
-                </div>
-                
-                <input type="file" id="fileInput" multiple accept=".json" style="display: none;" onchange="handleFileSelect(event)" />
-                
-                <div id="fileListSection" class="hidden">
-                    <h4>选择的文件：</h4>
-                    <div class="file-list" id="fileList"></div>
-                    <button class="btn" onclick="uploadFiles()">上传文件</button>
-                    <button class="btn" style="background-color: #6c757d;" onclick="clearFiles()">清空列表</button>
-                </div>
-                
-                <div id="uploadProgressSection" class="hidden">
-                    <div class="upload-progress">
-                        <h4>上传进度：</h4>
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
-                        </div>
-                        <p id="progressText">0%</p>
-                    </div>
-                </div>
-            </div>
+
+
 
             <!-- 环境变量标签页 -->
             <div id="envloadTab" class="tab-content">
@@ -945,7 +1060,13 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             <!-- 文件管理标签页 -->
             <div id="manageTab" class="tab-content">
                 <h3>凭证文件管理</h3>
-                <p>管理所有认证文件，查看状态和执行操作</p>
+                <p>管理所有用户的认证文件，查看状态和执行操作</p>
+                
+                <!-- 视图切换 -->
+                <div class="view-toggle" style="margin-bottom: 15px;">
+                    <button class="toggle-btn active" id="userViewBtn" onclick="switchToUserView()">按用户查看</button>
+                    <button class="toggle-btn" id="globalViewBtn" onclick="switchToGlobalView()">全局查看</button>
+                </div>
                 
                 <!-- 状态统计 -->
                 <div class="stats-container" id="statsContainer">
@@ -960,6 +1081,10 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                     <div class="stat-item disabled">
                         <span class="stat-number" id="statDisabled">0</span>
                         <span class="stat-label">禁用</span>
+                    </div>
+                    <div class="stat-item users" id="statUsers" style="display: none;">
+                        <span class="stat-number" id="statUserCount">0</span>
+                        <span class="stat-label">用户数</span>
                     </div>
                 </div>
                 
@@ -1019,7 +1144,14 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                     </div>
                 </div>
                 
-                <div id="credsListSection">
+                <!-- 用户列表视图 -->
+                <div id="usersListSection" style="display: block;">
+                    <div class="loading" id="usersLoading" style="display: none;">正在加载用户列表...</div>
+                    <div id="usersList"></div>
+                </div>
+                
+                <!-- 凭证文件列表视图 -->
+                <div id="credsListSection" style="display: none;">
                     <div class="loading" id="credsLoading">正在加载凭证文件...</div>
                     <div id="credsList"></div>
                     
@@ -1036,6 +1168,25 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             <div id="usageTab" class="tab-content">
                 <h3>使用统计</h3>
                 <p>查看每个凭证文件的API调用统计和配额使用情况</p>
+
+                <!-- 用户选择器 (始终显示) -->
+                <div class="user-filter-container">
+                    <label for="usageUserSelect">选择用户或全部用户：</label>
+                    <div class="search-select-container">
+                        <input type="text" id="usageUserSearch" placeholder="搜索用户...">
+                        <select id="usageUserSelect" size="5" style="display: none;">
+                            <option value="">全部用户</option>
+                            <!-- 用户选项将通过JavaScript动态加载 -->
+                        </select>
+                        <div id="usageUserOptions" class="search-select-options">
+                            <div class="search-select-option" data-value="">全部用户</div>
+                            <!-- 用户选项将通过JavaScript动态加载 -->
+                        </div>
+                    </div>
+                    <div class="selected-user-display">
+                        <span>当前选择：</span><span id="selectedUserDisplay">全部用户</span>
+                    </div>
+                </div>
                 
                 <!-- 统计概览 -->
                 <div class="stats-container" id="usageStatsContainer">
@@ -1055,6 +1206,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 
                 <div class="manage-actions">
                     <button class="refresh-btn" onclick="refreshUsageStats()">刷新统计</button>
+                    <button class="refresh-btn" onclick="initializeUsageUserSelector()">重新加载用户列表</button>
                     <button class="btn" style="background-color: #dc3545;" onclick="resetAllUsageStats()">重置所有统计</button>
                 </div>
                 
@@ -1338,9 +1490,11 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
     <script>
         let currentProjectId = '';
         let authInProgress = false;
-        let uploadSelectedFiles = []; // 上传页面用的文件列表
+
         let authToken = '';
         let credsData = {};
+        let usersData = {}; // 用户数据
+        let currentView = 'user'; // 当前视图：'user' 或 'global'
         
         // 分页和筛选相关变量
         let filteredCredsData = {};
@@ -1353,7 +1507,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         let statsData = {
             total: 0,
             normal: 0,
-            disabled: 0
+            disabled: 0,
+            users: 0
         };
 
         function showStatus(message, type = 'info') {
@@ -1426,10 +1581,16 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             
             // 如果切换到文件管理页面，自动加载数据
             if (tabName === 'manage') {
-                refreshCredsStatus();
+                // 根据当前视图加载相应数据
+                if (currentView === 'user') {
+                    refreshUsersList();
+                } else {
+                    refreshCredsStatus();
+                }
             }
-            // 如果切换到使用统计页面，自动加载统计
+            // 如果切换到使用统计页面，自动加载统计并初始化选择器
             if (tabName === 'usage') {
+                initializeUsageUserSelector();
                 refreshUsageStats();
             }
             // 如果切换到配置管理页面，自动加载配置
@@ -1590,141 +1751,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             }
         }
 
-        // 文件上传相关函数
-        function handleFileSelect(event) {
-            const files = Array.from(event.target.files);
-            addFiles(files);
-        }
 
-        function addFiles(files) {
-            files.forEach(file => {
-                if (file.type === 'application/json' || file.name.endsWith('.json')) {
-                    if (!uploadSelectedFiles.find(f => f.name === file.name && f.size === file.size)) {
-                        uploadSelectedFiles.push(file);
-                    }
-                } else {
-                    showStatus(`文件 ${file.name} 不是有效的JSON文件`, 'error');
-                }
-            });
-            
-            updateFileList();
-        }
 
-        function updateFileList() {
-            const fileList = document.getElementById('fileList');
-            const fileListSection = document.getElementById('fileListSection');
-            
-            if (uploadSelectedFiles.length === 0) {
-                fileListSection.classList.add('hidden');
-                return;
-            }
-            
-            fileListSection.classList.remove('hidden');
-            fileList.innerHTML = '';
-            
-            uploadSelectedFiles.forEach((file, index) => {
-                const fileItem = document.createElement('div');
-                fileItem.className = 'file-item';
-                fileItem.innerHTML = `
-                    <div>
-                        <span class="file-name">${file.name}</span>
-                        <span class="file-size">(${formatFileSize(file.size)})</span>
-                    </div>
-                    <button class="remove-btn" onclick="removeFile(${index})">删除</button>
-                `;
-                fileList.appendChild(fileItem);
-            });
-        }
-
-        function removeFile(index) {
-            uploadSelectedFiles.splice(index, 1);
-            updateFileList();
-        }
-
-        function clearFiles() {
-            uploadSelectedFiles = [];
-            updateFileList();
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
-            return Math.round(bytes / (1024 * 1024)) + ' MB';
-        }
-
-        async function uploadFiles() {
-            if (uploadSelectedFiles.length === 0) {
-                showStatus('请选择要上传的文件', 'error');
-                return;
-            }
-
-            const progressSection = document.getElementById('uploadProgressSection');
-            const progressFill = document.getElementById('progressFill');
-            const progressText = document.getElementById('progressText');
-            
-            progressSection.classList.remove('hidden');
-            
-            const formData = new FormData();
-            uploadSelectedFiles.forEach(file => {
-                formData.append('files', file);
-            });
-
-            try {
-                const xhr = new XMLHttpRequest();
-                
-                xhr.upload.onprogress = function(event) {
-                    if (event.lengthComputable) {
-                        const percentComplete = (event.loaded / event.total) * 100;
-                        progressFill.style.width = percentComplete + '%';
-                        progressText.textContent = Math.round(percentComplete) + '%';
-                    }
-                };
-
-                xhr.onload = function() {
-                    if (xhr.status === 200) {
-                        const data = JSON.parse(xhr.responseText);
-                        showStatus(`成功上传 ${data.uploaded_count} 个文件`, 'success');
-                        clearFiles();
-                        progressSection.classList.add('hidden');
-                    } else {
-                        const error = JSON.parse(xhr.responseText);
-                        showStatus(`上传失败: ${error.error}`, 'error');
-                    }
-                };
-
-                xhr.onerror = function() {
-                    showStatus('上传失败：网络错误', 'error');
-                };
-
-                xhr.open('POST', '/auth/upload');
-                xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
-                xhr.send(formData);
-
-            } catch (error) {
-                showStatus(`上传失败: ${error.message}`, 'error');
-            }
-        }
-
-        // 拖拽功能
-        const uploadArea = document.getElementById('uploadArea');
-        
-        uploadArea.addEventListener('dragover', function(event) {
-            event.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-
-        uploadArea.addEventListener('dragleave', function(event) {
-            event.preventDefault();
-            uploadArea.classList.remove('dragover');
-        });
-
-        uploadArea.addEventListener('drop', function(event) {
-            event.preventDefault();
-            uploadArea.classList.remove('dragover');
-            
-            const files = Array.from(event.dataTransfer.files);
-            addFiles(files);
-        });
 
         // WebSocket日志相关变量和函数
         let logWebSocket = null;
@@ -1906,6 +1934,283 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             }
         }
 
+        // 视图切换函数
+        function switchToUserView() {
+            currentView = 'user';
+            document.getElementById('userViewBtn').classList.add('active');
+            document.getElementById('globalViewBtn').classList.remove('active');
+            document.getElementById('usersListSection').style.display = 'block';
+            document.getElementById('credsListSection').style.display = 'none';
+            document.getElementById('statUsers').style.display = 'block';
+            
+            // 加载用户列表
+            refreshUsersList();
+        }
+        
+        function switchToGlobalView() {
+            currentView = 'global';
+            document.getElementById('userViewBtn').classList.remove('active');
+            document.getElementById('globalViewBtn').classList.add('active');
+            document.getElementById('usersListSection').style.display = 'none';
+            document.getElementById('credsListSection').style.display = 'block';
+            document.getElementById('statUsers').style.display = 'none';
+            
+            // 加载全局凭证列表
+            refreshCredsStatus();
+        }
+        
+        // 加载用户列表
+        async function refreshUsersList() {
+            const usersLoading = document.getElementById('usersLoading');
+            const usersList = document.getElementById('usersList');
+            
+            try {
+                usersLoading.style.display = 'block';
+                usersList.innerHTML = '';
+                
+                const response = await fetch('/users/list', {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    usersData = data.users;
+                    
+                    // 计算用户统计
+                    statsData.users = usersData.length;
+                    
+                    // 渲染用户列表
+                    renderUsersList();
+                    
+                    // 更新统计显示
+                    updateStatsDisplay();
+                    
+                    showStatus(`已加载 ${usersData.length} 个用户`, 'success');
+                } else {
+                    showStatus(`加载用户列表失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('refreshUsersList error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            } finally {
+                usersLoading.style.display = 'none';
+            }
+        }
+        
+        // 渲染用户列表
+        function renderUsersList() {
+            const usersList = document.getElementById('usersList');
+            usersList.innerHTML = '';
+            
+            if (usersData.length === 0) {
+                usersList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无用户数据</p>';
+                return;
+            }
+            
+            for (const userData of usersData) {
+                const userItem = createUserItem(userData.username, userData);
+                usersList.appendChild(userItem);
+            }
+        }
+        
+        // 创建用户项
+        function createUserItem(username, userData) {
+            const userItem = document.createElement('div');
+            userItem.className = 'user-item';
+            userItem.id = `user-${username}`;
+            
+            const totalFiles = userData.total_credentials || 0;
+            const normalFiles = userData.enabled_credentials || 0;
+            const disabledFiles = totalFiles - normalFiles;
+            
+            userItem.innerHTML = `
+                <div class="user-header" onclick="toggleUserExpand('${username}')">
+                    <div class="user-info">
+                        <div class="user-name">${username}</div>
+                        <div class="user-stats">
+                            <span>总计: ${totalFiles}</span>
+                            <span>正常: ${normalFiles}</span>
+                            <span>禁用: ${disabledFiles}</span>
+                        </div>
+                    </div>
+                    <div class="user-expand-icon">▶</div>
+                </div>
+                <div class="user-creds">
+                    <div class="user-creds-header">
+                        <h4>凭证文件 (${totalFiles})</h4>
+                        <div class="user-actions">
+                            <button class="user-action-btn upload" onclick="uploadCredsForUser('${username}')">上传凭证</button>
+                        </div>
+                    </div>
+                    <div id="user-creds-${username}"></div>
+                </div>
+            `;
+            
+            return userItem;
+        }
+        
+        // 切换用户展开状态
+        function toggleUserExpand(username) {
+            const userItem = document.getElementById(`user-${username}`);
+            const isExpanded = userItem.classList.contains('expanded');
+            
+            if (isExpanded) {
+                userItem.classList.remove('expanded');
+            } else {
+                userItem.classList.add('expanded');
+                // 加载用户的凭证文件
+                loadUserCredentials(username);
+            }
+        }
+        
+        // 加载用户凭证文件
+        async function loadUserCredentials(username) {
+            const userCredsContainer = document.getElementById(`user-creds-${username}`);
+            
+            try {
+                userCredsContainer.innerHTML = '<div class="loading">加载中...</div>';
+                
+                const response = await fetch(`/creds/status?user=${username}`, {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const userCreds = data.creds;
+                    renderUserCredentials(username, userCreds);
+                } else {
+                    userCredsContainer.innerHTML = `<p style="color: #dc3545;">加载失败: ${data.detail || data.error || '未知错误'}</p>`;
+                }
+            } catch (error) {
+                console.error('loadUserCredentials error:', error);
+                userCredsContainer.innerHTML = `<p style="color: #dc3545;">网络错误: ${error.message}</p>`;
+            }
+        }
+        
+        // 渲染用户凭证文件
+        function renderUserCredentials(username, userCreds) {
+            const userCredsContainer = document.getElementById(`user-creds-${username}`);
+            
+            if (Object.keys(userCreds).length === 0) {
+                userCredsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 10px;">该用户暂无凭证文件</p>';
+                return;
+            }
+            
+            let html = '';
+            for (const [filename, credInfo] of Object.entries(userCreds)) {
+                html += createUserCredItem(username, filename, credInfo);
+            }
+            
+            userCredsContainer.innerHTML = html;
+        }
+        
+        // 创建用户凭证项
+        function createUserCredItem(username, filename, credInfo) {
+            const status = credInfo.status;
+            const statusClass = status.disabled ? 'disabled' : (status.valid ? 'normal' : 'error');
+            const statusText = status.disabled ? '已禁用' : (status.valid ? '正常' : '错误');
+            
+            return `
+                <div class="cred-item ${statusClass}" style="margin-bottom: 10px; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${filename}</strong>
+                            <span class="status-badge ${statusClass}" style="margin-left: 10px; padding: 2px 6px; border-radius: 3px; font-size: 12px;">${statusText}</span>
+                        </div>
+                        <div class="cred-actions" style="display: flex; gap: 5px;">
+                            ${!status.disabled ? 
+                                `<button class="action-btn disable" onclick="userCredAction('${username}', '${filename}', 'disable')">禁用</button>` :
+                                `<button class="action-btn enable" onclick="userCredAction('${username}', '${filename}', 'enable')">启用</button>`
+                            }
+                            <button class="action-btn delete" onclick="userCredAction('${username}', '${filename}', 'delete')">删除</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 用户凭证操作
+        async function userCredAction(username, filename, action) {
+            try {
+                const response = await fetch('/creds/user-action', {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeaders(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        filename: filename,
+                        action: action
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus(`${action === 'delete' ? '删除' : (action === 'enable' ? '启用' : '禁用')}成功`, 'success');
+                    // 重新加载该用户的凭证
+                    loadUserCredentials(username);
+                    // 更新用户数据
+                    refreshUsersList();
+                } else {
+                    showStatus(`操作失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                console.error('userCredAction error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+        
+        // 为用户上传凭证
+        function uploadCredsForUser(username) {
+            // 创建文件输入元素
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.multiple = true;
+            fileInput.accept = '.json';
+            
+            fileInput.onchange = async function(event) {
+                const files = event.target.files;
+                if (files.length === 0) return;
+                
+                const formData = new FormData();
+                for (let file of files) {
+                    formData.append('files', file);
+                }
+                formData.append('username', username);
+                
+                try {
+                    const response = await fetch('/auth/upload-for-user', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showStatus(`为用户 ${username} 上传凭证成功`, 'success');
+                        // 重新加载该用户的凭证
+                        loadUserCredentials(username);
+                        // 更新用户数据
+                        refreshUsersList();
+                    } else {
+                        showStatus(`上传失败: ${data.detail || data.error || '未知错误'}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('uploadCredsForUser error:', error);
+                    showStatus(`网络错误: ${error.message}`, 'error');
+                }
+            };
+            
+            fileInput.click();
+        }
+        
         // 凭证文件管理相关函数
         async function refreshCredsStatus() {
             const credsLoading = document.getElementById('credsLoading');
@@ -1954,24 +2259,28 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
 
         // 计算统计数据
         function calculateStats() {
+            // 保留原有用户数统计
+            const existingUsers = statsData.users || 0;
+
             statsData = {
                 total: 0,
                 normal: 0,
-                disabled: 0
+                disabled: 0,
+                users: existingUsers  // 保留用户数统计
             };
-            
+
             // 清空并重新收集错误码
             availableErrorCodes.clear();
-            
+
             for (const [fullPath, credInfo] of Object.entries(credsData)) {
                 statsData.total++;
-                
+
                 if (credInfo.status.disabled) {
                     statsData.disabled++;
                 } else {
                     statsData.normal++;
                 }
-                
+
                 // 收集错误码信息
                 if (credInfo.status.error_codes && credInfo.status.error_codes.length > 0) {
                     credInfo.status.error_codes.forEach(code => {
@@ -1979,7 +2288,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                     });
                 }
             }
-            
+
             // 更新错误码快速筛选按钮
             updateErrorCodeBadges();
         }
@@ -2015,6 +2324,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             document.getElementById('statTotal').textContent = statsData.total;
             document.getElementById('statNormal').textContent = statsData.normal;
             document.getElementById('statDisabled').textContent = statsData.disabled;
+            document.getElementById('statUserCount').textContent = statsData.users;
         }
         
         // 应用筛选
@@ -2849,9 +3159,10 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         
         let usageStatsData = {};
         let currentEditingFile = '';
+        let currentUsageView = 'global'; // 统计视图状态：'global' 或 'user'
 
         // 刷新使用统计
-        async function refreshUsageStats() {
+        async function refreshUsageStats(username = null) {
             const usageLoading = document.getElementById('usageLoading');
             const usageList = document.getElementById('usageList');
             
@@ -2859,13 +3170,17 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 usageLoading.style.display = 'block';
                 usageList.innerHTML = '';
                 
-                // 获取所有文件的使用统计
+                // 构建API URL，如果有用户名则添加参数
+                const statsUrl = username ? `/usage/stats?user=${encodeURIComponent(username)}` : '/usage/stats';
+                const aggregatedUrl = username ? `/usage/aggregated?user=${encodeURIComponent(username)}` : '/usage/aggregated';
+                
+                // 获取使用统计
                 const [statsResponse, aggregatedResponse] = await Promise.all([
-                    fetch('/usage/stats', {
+                    fetch(statsUrl, {
                         method: 'GET',
                         headers: getAuthHeaders()
                     }),
-                    fetch('/usage/aggregated', {
+                    fetch(aggregatedUrl, {
                         method: 'GET',
                         headers: getAuthHeaders()
                     })
@@ -2895,6 +3210,190 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             } finally {
                 usageLoading.style.display = 'none';
             }
+        }
+        
+        // 初始化使用统计用户选择器
+        async function initializeUsageUserSelector() {
+            console.log('=== 开始初始化用户选择器 ===');
+            try {
+                console.log('发送 /users/list 请求...');
+                const response = await fetch('/users/list', {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+
+                console.log('响应状态:', response.status, response.ok);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('API返回的数据:', data);
+
+                    const userOptionsDiv = document.getElementById('usageUserOptions');
+                    console.log('找到选项容器元素:', !!userOptionsDiv);
+
+                    // 清空现有选项
+                    userOptionsDiv.innerHTML = '';
+
+                    // 先添加"全部用户"选项
+                    const allUsersOption = document.createElement('div');
+                    allUsersOption.className = 'search-select-option';
+                    allUsersOption.setAttribute('data-value', '');
+                    allUsersOption.textContent = '全部用户';
+                    allUsersOption.onclick = () => selectUsageUser('', '全部用户');
+                    userOptionsDiv.appendChild(allUsersOption);
+
+                    // 检查是否有用户数据
+                    if (data.users && Array.isArray(data.users)) {
+                        console.log(`找到 ${data.users.length} 个用户`);
+
+                        // 添加用户选项
+                        data.users.forEach((user, index) => {
+                            console.log(`处理用户 ${index + 1}:`, user.username, user.total_credentials);
+
+                            const userOption = document.createElement('div');
+                            userOption.className = 'search-select-option';
+                            userOption.setAttribute('data-value', user.username);
+                            userOption.textContent = `${user.username} (${user.total_credentials}个凭证)`;
+                            userOption.onclick = () => selectUsageUser(user.username, `${user.username} (${user.total_credentials}个凭证)`);
+                            userOptionsDiv.appendChild(userOption);
+
+                            console.log(`已添加用户选项: ${userOption.textContent}`);
+                        });
+
+                        console.log(`总共添加了 ${data.users.length} 个用户选项`);
+                    } else {
+                        console.warn('users数据缺失或不是数组:', data.users);
+
+                        // 如果没有用户数据，显示说明信息
+                        const noDataOption = document.createElement('div');
+                        noDataOption.className = 'search-select-option';
+                        noDataOption.style.color = '#999';
+                        noDataOption.style.fontStyle = 'italic';
+                        noDataOption.textContent = '暂无用户数据';
+                        userOptionsDiv.appendChild(noDataOption);
+
+                        showStatus('警告：未找到用户数据，您可能没有权限查看用户列表', 'info');
+                    }
+
+                    // 确保"全部用户"选项能正常显示
+                    console.log('当前选项内容:', userOptionsDiv.innerHTML);
+                } else {
+                    console.error('API请求失败:', response.status, response.statusText);
+                    showStatus(`获取用户列表失败 (${response.status})`, 'error');
+                }
+            } catch (error) {
+                console.error('initializeUsageUserSelector error:', error);
+                console.error('错误详情:', error.stack);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+
+            console.log('=== 用户选择器初始化完成 ===');
+        }
+
+        // 搜索用户功能
+        function filterUsageUsers() {
+            const searchTerm = document.getElementById('usageUserSearch').value.toLowerCase();
+            const userOptions = document.querySelectorAll('#usageUserOptions .search-select-option');
+
+            userOptions.forEach(option => {
+                const text = option.textContent.toLowerCase();
+                if (text.includes(searchTerm) || option.getAttribute('data-value') === '') {
+                    option.style.display = 'block';
+                } else {
+                    option.style.display = 'none';
+                }
+            });
+
+            // 显示下拉框
+            document.getElementById('usageUserOptions').style.display = 'block';
+        }
+
+        // 选择用户
+        function selectUsageUser(userValue, displayText) {
+            // 更新显示文本
+            document.getElementById('selectedUserDisplay').textContent = displayText;
+
+            // 隐藏选项框
+            document.getElementById('usageUserOptions').style.display = 'none';
+
+            // 清空搜索框
+            document.getElementById('usageUserSearch').value = '';
+
+            // 刷新统计数据
+            if (userValue === '') {
+                // 全部用户
+                refreshUsageStats();
+            } else {
+                // 特定用户
+                refreshUsageStats(userValue);
+            }
+        }
+
+        // 切换搜索选择器显示
+        function toggleUserSelector() {
+            const userOptions = document.getElementById('usageUserOptions');
+            userOptions.style.display = userOptions.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        // 更新使用统计函数调用，初始化用户选择器
+        async function refreshUsageStats(username = null) {
+            const usageLoading = document.getElementById('usageLoading');
+            const usageList = document.getElementById('usageList');
+
+            try {
+                usageLoading.style.display = 'block';
+                usageList.innerHTML = '';
+
+                // 构建API URL，如果有用户名则添加参数
+                const statsUrl = username ? `/usage/stats?user=${encodeURIComponent(username)}` : '/usage/stats';
+                const aggregatedUrl = username ? `/usage/aggregated?user=${encodeURIComponent(username)}` : '/usage/aggregated';
+
+                // 获取使用统计
+                const [statsResponse, aggregatedResponse] = await Promise.all([
+                    fetch(statsUrl, {
+                        method: 'GET',
+                        headers: getAuthHeaders()
+                    }),
+                    fetch(aggregatedUrl, {
+                        method: 'GET',
+                        headers: getAuthHeaders()
+                    })
+                ]);
+
+                const statsData = await statsResponse.json();
+                const aggregatedData = await aggregatedResponse.json();
+
+                if (statsResponse.ok && aggregatedResponse.ok) {
+                    usageStatsData = statsData.data;
+
+                    // 更新概览统计
+                    document.getElementById('totalApiCalls').textContent = aggregatedData.data.total_all_model_calls || 0;
+                    document.getElementById('geminiProCalls').textContent = aggregatedData.data.total_gemini_2_5_pro_calls || 0;
+                    document.getElementById('totalFiles').textContent = aggregatedData.data.total_files || 0;
+
+                    // 渲染使用统计列表
+                    renderUsageList();
+
+                    showStatus(`已加载 ${aggregatedData.data.total_files} 个文件的使用统计`, 'success');
+                } else {
+                    showStatus('加载使用统计失败', 'error');
+                }
+            } catch (error) {
+                console.error('refreshUsageStats error:', error);
+                showStatus(`网络错误: ${error.message}`, 'error');
+            } finally {
+                usageLoading.style.display = 'none';
+            }
+        }
+        
+        // 清空统计数据显示
+        function clearUsageStats() {
+            document.getElementById('totalApiCalls').textContent = '0';
+            document.getElementById('geminiProCalls').textContent = '0';
+            document.getElementById('totalFiles').textContent = '0';
+            
+            const usageList = document.getElementById('usageList');
+            usageList.innerHTML = '<p style="text-align: center; color: #666;">请选择用户查看统计数据</p>';
         }
         
         // 渲染使用统计列表
@@ -3111,6 +3610,75 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 closeLimitsModal();
             }
         }
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 添加文件管理视图切换按钮事件监听器
+            const userViewBtn = document.getElementById('userViewBtn');
+            const globalViewBtn = document.getElementById('globalViewBtn');
+            
+            if (userViewBtn) {
+                userViewBtn.addEventListener('click', switchToUserView);
+            }
+            
+            if (globalViewBtn) {
+                globalViewBtn.addEventListener('click', switchToGlobalView);
+            }
+            
+            // 初始化使用统计用户选择器
+            initializeUsageUserSelector();
+
+            // 添加搜索框事件监听器
+            const usageUserSearch = document.getElementById('usageUserSearch');
+            if (usageUserSearch) {
+                usageUserSearch.addEventListener('input', filterUsageUsers);
+                usageUserSearch.addEventListener('focus', () => {
+                    document.getElementById('usageUserOptions').style.display = 'block';
+                });
+                usageUserSearch.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    document.getElementById('usageUserOptions').style.display = 'block';
+                });
+            }
+
+            // 点击外部时隐藏选项框
+            document.addEventListener('click', (e) => {
+                const container = document.querySelector('.search-select-container');
+                if (!container.contains(e.target)) {
+                    document.getElementById('usageUserOptions').style.display = 'none';
+                }
+            });
+
+            // 为"全部用户"选项添加点击事件
+            const allUsersOption = document.querySelector('#usageUserOptions .search-select-option[data-value=""]');
+            if (allUsersOption) {
+                allUsersOption.onclick = () => selectUsageUser('', '全部用户');
+            }
+
+            // 设置默认视图为用户视图
+            currentView = 'user';
+            if (userViewBtn) {
+                userViewBtn.classList.add('active');
+            }
+            if (globalViewBtn) {
+                globalViewBtn.classList.remove('active');
+            }
+
+            // 默认显示用户列表视图
+            const usersListSection = document.getElementById('usersListSection');
+            const credsListSection = document.getElementById('credsListSection');
+            const statUsers = document.getElementById('statUsers');
+
+            if (usersListSection) {
+                usersListSection.style.display = 'block';
+            }
+            if (credsListSection) {
+                credsListSection.style.display = 'none';
+            }
+            if (statUsers) {
+                statUsers.style.display = 'block';
+            }
+        });
     </script>
 </body>
 </html>

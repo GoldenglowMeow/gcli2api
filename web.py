@@ -14,45 +14,26 @@ from src.gemini_router import router as gemini_router
 from src.web_routes import router as web_router
 from src.user_routes import router as user_router
 
-# Import managers and utilities
-from src.credential_manager import CredentialManager
+# Import utilities
 from config import get_server_host, get_server_port
 from log import log
-
-# 全局凭证管理器
-global_credential_manager = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    global global_credential_manager
-    
     log.info("启动 GCLI2API 主服务")
-    
-    # 初始化全局凭证管理器
-    try:
-        global_credential_manager = CredentialManager()
-        await global_credential_manager.initialize()
-        log.info("凭证管理器初始化成功")
-    except Exception as e:
-        log.error(f"凭证管理器初始化失败: {e}")
-        global_credential_manager = None
-    
-    # 自动从环境变量加载凭证
+
+    # 自动从环境变量加载凭证（如果有的话）
     try:
         from src.auth_api import auto_load_env_credentials_on_startup
         auto_load_env_credentials_on_startup()
     except Exception as e:
         log.error(f"自动加载环境变量凭证失败: {e}")
-    
+
     # OAuth回调服务器将在需要时按需启动
-    
+
     yield
-    
-    # 清理资源
-    if global_credential_manager:
-        await global_credential_manager.close()
-    
+
     log.info("GCLI2API 主服务已停止")
 
 # 创建FastAPI应用
@@ -101,12 +82,8 @@ app.include_router(
     tags=["User Management"]
 )
 
-def get_credential_manager():
-    """获取全局凭证管理器实例"""
-    return global_credential_manager
-
 # 导出给其他模块使用
-__all__ = ['app', 'get_credential_manager']
+__all__ = ['app']
 
 if __name__ == "__main__":
     from hypercorn.asyncio import serve

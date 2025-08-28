@@ -14,8 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from .models import ChatCompletionRequest, ModelList, Model
 from .openai_transfer import openai_request_to_gemini, gemini_response_to_openai, gemini_stream_chunk_to_openai
 from .google_api_client import send_gemini_request, build_gemini_payload_from_openai
-from .credential_manager import CredentialManager
-from .user_aware_credential_manager import UserAwareCredentialManager
+from .user_aware_credential_manager import UserCredentialManager
 from .user_routes import get_user_by_api_key
 from .anti_truncation import apply_anti_truncation_to_stream
 from config import get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
@@ -31,27 +30,18 @@ credential_manager = None
 user_credential_managers = {}
 
 @asynccontextmanager
-async def get_credential_manager():
-    """获取全局凭证管理器实例"""
-    global credential_manager
-    if not credential_manager:
-        credential_manager = CredentialManager()
-        await credential_manager.initialize()
-    yield credential_manager
-
-@asynccontextmanager
 async def get_user_credential_manager(username: str):
     """获取用户特定的凭证管理器实例（带缓存）"""
     global user_credential_managers
-    
+
     if username not in user_credential_managers:
         log.debug(f"创建新的用户凭证管理器实例: {username}")
-        user_cred_mgr = UserAwareCredentialManager(username)
+        user_cred_mgr = UserCredentialManager(username)
         await user_cred_mgr.initialize()
         user_credential_managers[username] = user_cred_mgr
     else:
         log.debug(f"复用现有的用户凭证管理器实例: {username}")
-    
+
     yield user_credential_managers[username]
 
 async def cleanup_user_credential_managers():
@@ -165,8 +155,14 @@ async def chat_completions(
     
     # 根据认证类型获取相应的凭证管理器
     if auth_info["type"] == "admin":
-        async with get_credential_manager() as cred_mgr:
-            return await process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation)
+        # 为管理员创建全局凭证管理器
+        admin_cred_mgr = UserCredentialManager()
+        await admin_cred_mgr.initialize()
+        try:
+            result = await process_chat_request(request_data, admin_cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation)
+            return result
+        finally:
+            await admin_cred_mgr.close()
     else:  # user type
         user_id = auth_info["user_id"]
         user = get_user_by_api_key(auth_info["token"])
@@ -238,7 +234,7 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
         log.error(f"Response conversion failed: {e}")
         raise HTTPException(status_code=500, detail="Response conversion failed")
 
-async def fake_stream_response(api_payload: dict, creds, cred_mgr: CredentialManager, model: str):
+async def fake_stream_response(api_payload: dict, creds, cred_mgr: UserCredentialManager, model: str):
     """处理假流式响应"""
     import asyncio
     

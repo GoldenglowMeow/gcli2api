@@ -16,19 +16,16 @@ from pydantic import BaseModel
 from .auth_api import (
     create_auth_url, get_auth_status,
     verify_password, generate_auth_token, verify_auth_token,
-    batch_upload_credentials, asyncio_complete_auth_flow, 
+    asyncio_complete_auth_flow,
     load_credentials_from_env, clear_env_credentials
 )
-from .credential_manager import CredentialManager
+from .user_aware_credential_manager import UserCredentialManager
 from .usage_stats import get_usage_stats, get_aggregated_stats
 import config
 
 # 创建路由器
 router = APIRouter()
 security = HTTPBearer()
-
-# 创建credential manager实例
-credential_manager = CredentialManager()
 
 # WebSocket连接管理
 class ConnectionManager:
@@ -75,18 +72,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def ensure_credential_manager_initialized():
-    """确保credential manager已初始化"""
-    if not credential_manager._initialized:
-        await credential_manager.initialize()
-
-async def get_credential_manager():
-    """获取全局凭证管理器实例"""
-    global credential_manager
-    if not credential_manager:
-        credential_manager = CredentialManager()
-        await credential_manager.initialize()
-    return credential_manager
+# 移除了全局凭证管理器相关的函数
 
 def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """验证用户密码（控制面板使用）"""
@@ -117,6 +103,14 @@ class CredFileBatchActionRequest(BaseModel):
 class ConfigSaveRequest(BaseModel):
     config: dict
 
+class UserCredActionRequest(BaseModel):
+    username: str
+    filename: str
+    action: str  # enable, disable, delete
+
+class UserUploadRequest(BaseModel):
+    username: str
+
 
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -125,9 +119,9 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=401, detail="无效的认证令牌")
     return credentials.credentials
 
-@router.get("/", response_class=HTMLResponse)
-@router.get("/v1", response_class=HTMLResponse)
-@router.get("/auth", response_class=HTMLResponse)
+@router.get("/admin", response_class=HTMLResponse)
+# @router.get("/admin/v1", response_class=HTMLResponse)
+# @router.get("/auth", response_class=HTMLResponse)
 async def serve_control_panel():
     """提供统一控制面板（包含认证、文件管理、配置等功能）"""
     try:
@@ -143,7 +137,7 @@ async def serve_control_panel():
         raise HTTPException(status_code=500, detail="服务器内部错误")
 
 
-@router.get("/user", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
 async def serve_user_login():
     """提供用户登录界面"""
     try:
@@ -158,7 +152,7 @@ async def serve_user_login():
         raise HTTPException(status_code=500, detail="服务器内部错误")
 
 
-@router.get("/user/dashboard", response_class=HTMLResponse)
+@router.get("/dashboard", response_class=HTMLResponse)
 async def serve_user_dashboard():
     """提供用户面板界面"""
     try:
@@ -284,86 +278,176 @@ async def check_auth_status(project_id: str, token: str = Depends(verify_token))
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/auth/upload")
-async def upload_credentials(files: List[UploadFile] = File(...), token: str = Depends(verify_token)):
-    """批量上传认证文件"""
+@router.get("/users/list")
+async def get_users_list(token: str = Depends(verify_token)):
+    """获取用户列表"""
     try:
-        if not files:
-            raise HTTPException(status_code=400, detail="请选择要上传的文件")
-        
-        files_data = []
-        for file in files:
-            if not file.filename.endswith('.json'):
-                raise HTTPException(status_code=400, detail=f"文件 {file.filename} 不是JSON格式")
-            
-            content = await file.read()
+        from .user_database import user_db
+        from .user_aware_credential_manager import UserCredentialManager
+
+        # 获取所有用户
+        users = user_db.get_all_users()
+
+        users_info = []
+        for user in users:
+            # 获取用户的凭证统计
             try:
-                content_str = content.decode('utf-8')
-            except UnicodeDecodeError:
-                raise HTTPException(status_code=400, detail=f"文件 {file.filename} 编码格式不支持")
-            
-            files_data.append({
-                'filename': file.filename,
-                'content': content_str
+                manager = UserCredentialManager(user["username"])
+                await manager.initialize()
+                filenames = manager.get_user_credential_files()
+                credentials = []
+                for filename in filenames:
+                    cred_state = manager._get_cred_state(filename)
+                    credentials.append({
+                        "filename": filename,
+                        "is_enabled": not cred_state.get("disabled", False)
+                    })
+                await manager.close()
+
+                total_creds = len(credentials)
+                enabled_creds = sum(1 for cred in credentials if cred.get("is_enabled", False))
+            except Exception as e:
+                log.warning(f"获取用户 {user['username']} 凭证统计失败: {e}")
+                total_creds = 0
+                enabled_creds = 0
+
+            users_info.append({
+                "user_id": user["user_id"],
+                "username": user["username"],
+                "created_at": user["created_at"],
+                "total_credentials": total_creds,
+                "enabled_credentials": enabled_creds
             })
+
+        return JSONResponse(content={"users": users_info})
         
-        result = batch_upload_credentials(files_data)
-        
-        if result['uploaded_count'] > 0:
-            return JSONResponse(content={
-                "uploaded_count": result['uploaded_count'],
-                "total_count": result['total_count'],
-                "results": result['results'],
-                "message": f"成功上传 {result['uploaded_count']}/{result['total_count']} 个文件"
-            })
-        else:
-            raise HTTPException(status_code=400, detail="没有文件上传成功")
-            
-    except HTTPException:
-        raise
     except Exception as e:
-        log.error(f"批量上传失败: {e}")
+        log.error(f"获取用户列表失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("/creds/status")
-async def get_creds_status(token: str = Depends(verify_token)):
-    """获取所有凭证文件的状态"""
+async def get_creds_status(user: Optional[str] = None, token: str = Depends(verify_token)):
+    """获取凭证文件的状态，支持按用户过滤"""
     try:
-        await ensure_credential_manager_initialized()
-        
-        # 强制从文件重新加载最新状态
-        await credential_manager._load_state()
-        
-        # 获取状态时不要调用_discover_credential_files，因为它会过滤被禁用的文件
-        # 直接获取所有文件的状态
-        status = credential_manager.get_creds_status()
-        
-        # 读取文件内容
-        creds_info = {}
-        for filename, file_status in status.items():
+        if user:
+            # 获取指定用户的凭证
+            from .user_aware_credential_manager import UserCredentialManager
+            from .user_database import user_db
+
+            # 通过username获取user_id
+            user_info = user_db.get_user_by_username(user)
+            if not user_info:
+                return JSONResponse(content={"creds": {}, "error": f"用户 {user} 不存在"})
+
             try:
-                with open(filename, 'r', encoding='utf-8') as f:
-                    content = json.loads(f.read())
-                
-                creds_info[filename] = {
-                    "status": file_status,
-                    "content": content,
-                    "filename": os.path.basename(filename),
-                    "size": os.path.getsize(filename),
-                    "modified_time": os.path.getmtime(filename),
-                    "user_email": file_status.get("user_email")
-                }
+                manager = UserCredentialManager(user)
+                await manager.initialize()
+                filenames = manager.get_user_credential_files()
+
+                creds_info = {}
+                for filename in filenames:
+                    cred_state = manager._get_cred_state(filename)
+                    is_enabled = not cred_state.get("disabled", False)
+
+                    # 构建文件路径
+                    user_creds_dir = manager._get_user_credentials_dir()
+                    filepath = os.path.join(user_creds_dir, filename)
+
+                    # 检查文件是否存在
+                    if not os.path.exists(filepath):
+                        creds_info[filename] = {
+                            "status": {
+                                "enabled": is_enabled,
+                                "disabled": not is_enabled,
+                                "valid": False
+                            },
+                            "content": None,
+                            "filename": filename,
+                            "error": "文件不存在"
+                        }
+                        continue
+
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            content = json.loads(f.read())
+
+                        creds_info[filename] = {
+                            "status": {
+                                "enabled": is_enabled,
+                                "disabled": not is_enabled,
+                                "valid": True,
+                                "user_email": content.get("client_email", "未知")
+                            },
+                            "content": content,
+                            "filename": filename,
+                            "size": os.path.getsize(filepath),
+                            "modified_time": os.path.getmtime(filepath),
+                            "user_email": content.get("client_email", "未知")
+                        }
+                    except Exception as e:
+                        log.error(f"读取用户凭证文件失败 {filepath}: {e}")
+                        creds_info[filename] = {
+                            "status": {
+                                "enabled": is_enabled,
+                                "disabled": not is_enabled,
+                                "valid": False
+                            },
+                            "content": None,
+                            "filename": filename,
+                            "error": str(e)
+                        }
+
+                await manager.close()
+                return JSONResponse(content={"creds": creds_info})
+
             except Exception as e:
-                log.error(f"读取凭证文件失败 {filename}: {e}")
-                creds_info[filename] = {
-                    "status": file_status,
-                    "content": None,
-                    "filename": os.path.basename(filename),
-                    "error": str(e)
-                }
-        
-        return JSONResponse(content={"creds": creds_info})
+                log.error(f"获取用户 {user} 凭证失败: {e}")
+                return JSONResponse(content={"creds": {}, "error": str(e)})
+        else:
+            # 管理员模式：获取所有用户的凭证状态
+            from .user_aware_credential_manager import UserCredentialManager
+            from .user_database import user_db
+
+            try:
+                users = user_db.get_all_users()
+                creds_info = {}
+
+                for user_info in users:
+                    username = user_info["username"]
+                    manager = UserCredentialManager(username)
+                    await manager.initialize()
+                    filenames = manager.get_user_credential_files()
+
+                    for filename in filenames:
+                        cred_state = manager._get_cred_state(filename)
+                        is_enabled = not cred_state.get("disabled", False)
+
+                        # 构建文件路径
+                        user_creds_dir = manager._get_user_credentials_dir()
+                        filepath = os.path.join(user_creds_dir, filename)
+
+                        creds_info[filename] = {
+                            "status": {
+                                "enabled": is_enabled,
+                                "disabled": not is_enabled,
+                                "valid": os.path.exists(filepath),
+                                "user_email": cred_state.get("user_email", "未知")
+                            },
+                            "content": None,  # 出于安全考虑，不返回完整内容
+                            "filename": filename,
+                            "size": os.path.getsize(filepath) if os.path.exists(filepath) else 0,
+                            "modified_time": os.path.getmtime(filepath) if os.path.exists(filepath) else 0,
+                            "user_email": cred_state.get("user_email", "未知"),
+                            "username": username
+                        }
+
+                    await manager.close()
+
+                return JSONResponse(content={"creds": creds_info})
+
+            except Exception as e:
+                log.error(f"获取所有用户凭证失败: {e}")
+                return JSONResponse(content={"creds": {}, "error": str(e)})
         
     except Exception as e:
         log.error(f"获取凭证状态失败: {e}")
@@ -374,80 +458,69 @@ async def get_creds_status(token: str = Depends(verify_token)):
 async def creds_action(request: CredFileActionRequest, token: str = Depends(verify_token)):
     """对凭证文件执行操作（启用/禁用/删除）"""
     try:
-        await ensure_credential_manager_initialized()
-        
+        from .user_aware_credential_manager import UserCredentialManager
+        from .user_database import user_db
+
         log.info(f"Received request: {request}")
-        
+
         filename = request.filename
         action = request.action
-        
+
         log.info(f"Performing action '{action}' on file: {filename}")
-        
-        # 验证文件路径安全性
-        log.info(f"Validating file path: {repr(filename)}")
-        log.info(f"Is absolute: {os.path.isabs(filename)}")
-        log.info(f"Ends with .json: {filename.endswith('.json')}")
-        
-        # 如果不是绝对路径，转换为绝对路径
-        if not os.path.isabs(filename):
-            from config import CREDENTIALS_DIR
-            filename = os.path.abspath(os.path.join(CREDENTIALS_DIR, os.path.basename(filename)))
-            log.info(f"Converted to absolute path: {filename}")
-        
+
+        # 验证文件类型
         if not filename.endswith('.json'):
-            log.error(f"Invalid file path: {filename} (not a .json file)")
-            raise HTTPException(status_code=400, detail=f"无效的文件路径: {filename}")
-        
-        # 确保文件在CREDENTIALS_DIR内（安全检查）
-        from config import CREDENTIALS_DIR
-        credentials_dir_abs = os.path.abspath(CREDENTIALS_DIR)
-        filename_abs = os.path.abspath(filename)
-        if not filename_abs.startswith(credentials_dir_abs):
-            log.error(f"Security violation: file outside credentials directory: {filename}")
-            raise HTTPException(status_code=400, detail="文件路径不在允许的目录内")
-        
-        if not os.path.exists(filename):
-            log.error(f"File not found: {filename}")
-            raise HTTPException(status_code=404, detail="文件不存在")
-        
-        if action == "enable":
-            log.info(f"Web request: ENABLING file {filename}")
-            await credential_manager.set_cred_disabled(filename, False)
-            log.info(f"Web request: ENABLED file {filename} successfully")
-            return JSONResponse(content={"message": f"已启用凭证文件 {os.path.basename(filename)}"})
-        
-        elif action == "disable":
-            log.info(f"Web request: DISABLING file {filename}")
-            await credential_manager.set_cred_disabled(filename, True)
-            log.info(f"Web request: DISABLED file {filename} successfully")
-            return JSONResponse(content={"message": f"已禁用凭证文件 {os.path.basename(filename)}"})
-        
-        elif action == "delete":
-            try:
-                os.remove(filename)
-                # 从状态中移除（使用相对路径作为键）
-                from .credential_manager import _normalize_to_relative_path
-                relative_filename = _normalize_to_relative_path(filename)
-                
-                # 检查并移除状态（支持新旧两种键格式）
-                state_keys_to_remove = []
-                for key in credential_manager._creds_state.keys():
-                    if key == relative_filename or (os.path.isabs(key) and _normalize_to_relative_path(key) == relative_filename):
-                        state_keys_to_remove.append(key)
-                
-                for key in state_keys_to_remove:
-                    del credential_manager._creds_state[key]
-                
-                if state_keys_to_remove:
-                    await credential_manager._save_state()
-                
-                return JSONResponse(content={"message": f"已删除凭证文件 {os.path.basename(filename)}"})
-            except OSError as e:
-                raise HTTPException(status_code=500, detail=f"删除文件失败: {str(e)}")
-        
-        else:
-            raise HTTPException(status_code=400, detail="无效的操作类型")
-            
+            log.error(f"Invalid file type: {filename}")
+            raise HTTPException(status_code=400, detail="无效的文件类型，必须是JSON文件")
+
+        # 查找文件所属的用户
+        users = user_db.get_all_users()
+        username = None
+        for user_info in users:
+            user = user_info["username"]
+            manager = UserCredentialManager(user)
+            await manager.initialize()
+            filenames = manager.get_user_credential_files()
+            await manager.close()
+
+            if filename in filenames:
+                username = user
+                break
+
+        if not username:
+            raise HTTPException(status_code=404, detail="找不到对应的用户凭证文件")
+
+        try:
+            manager = UserCredentialManager(username)
+            await manager.initialize()
+
+            if action == "enable":
+                await manager.set_cred_disabled(filename, False)
+                result = {"success": True, "message": f"已启用用户 {username} 的凭证文件 {filename}"}
+            elif action == "disable":
+                await manager.set_cred_disabled(filename, True)
+                result = {"success": True, "message": f"已禁用用户 {username} 的凭证文件 {filename}"}
+            elif action == "delete":
+                success = await manager.delete_user_credential(filename)
+                if success:
+                    result = {"success": True, "message": f"已删除用户 {username} 的凭证文件 {filename}"}
+                else:
+                    result = {"success": False, "error": "删除失败"}
+            else:
+                await manager.close()
+                raise HTTPException(status_code=400, detail="无效的操作类型")
+
+            await manager.close()
+
+            if result["success"]:
+                return JSONResponse(content={"message": result["message"]})
+            else:
+                raise HTTPException(status_code=400, detail=result["error"])
+
+        except Exception as e:
+            log.error(f"用户凭证操作失败: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     except HTTPException:
         raise
     except Exception as e:
@@ -455,104 +528,148 @@ async def creds_action(request: CredFileActionRequest, token: str = Depends(veri
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/creds/user-action")
+async def user_creds_action(request: UserCredActionRequest, token: str = Depends(verify_token)):
+    """对指定用户的凭证文件执行操作（启用/禁用/删除）"""
+    try:
+        from .user_aware_credential_manager import UserCredentialManager
+
+        username = request.username
+        filename = request.filename
+        action = request.action
+
+        log.info(f"Performing action '{action}' on user {username} file: {filename}")
+
+        try:
+            manager = UserCredentialManager(username)
+            await manager.initialize()
+
+            if action == "enable":
+                await manager.set_cred_disabled(filename, False)
+                result = {"success": True, "message": f"成功启用用户 {username} 的凭证文件 {filename}"}
+            elif action == "disable":
+                await manager.set_cred_disabled(filename, True)
+                result = {"success": True, "message": f"成功禁用用户 {username} 的凭证文件 {filename}"}
+            elif action == "delete":
+                success = await manager.delete_user_credential(filename)
+                if success:
+                    result = {"success": True, "message": f"成功删除用户 {username} 的凭证文件 {filename}"}
+                else:
+                    result = {"success": False, "error": "删除失败"}
+            else:
+                await manager.close()
+                raise HTTPException(status_code=400, detail="无效的操作类型")
+
+            await manager.close()
+
+            if result["success"]:
+                return JSONResponse(content={
+                    "success": True,
+                    "message": result["message"]
+                })
+            else:
+                raise HTTPException(status_code=400, detail=result["error"])
+
+        except Exception as e:
+            log.error(f"用户凭证操作失败: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"用户凭证操作失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/creds/batch-action")
 async def creds_batch_action(request: CredFileBatchActionRequest, token: str = Depends(verify_token)):
     """批量对凭证文件执行操作（启用/禁用/删除）"""
     try:
-        await ensure_credential_manager_initialized()
-        
+        from .user_aware_credential_manager import UserCredentialManager
+        from .user_database import user_db
+
         action = request.action
         filenames = request.filenames
-        
+
         if not filenames:
             raise HTTPException(status_code=400, detail="文件名列表不能为空")
-        
+
         log.info(f"Performing batch action '{action}' on {len(filenames)} files")
-        
+
         success_count = 0
         errors = []
-        
-        from config import CREDENTIALS_DIR
-        
+
+        # 获取所有用户
+        users = user_db.get_all_users()
+
+        # 创建文件名到用户名的映射
+        filename_to_username = {}
+        for user_info in users:
+            username = user_info["username"]
+            manager = UserCredentialManager(username)
+            await manager.initialize()
+            user_filenames = manager.get_user_credential_files()
+            await manager.close()
+
+            for filename in user_filenames:
+                filename_to_username[filename] = username
+
         for filename in filenames:
             try:
-                # 验证文件路径安全性
+                # 验证文件类型
                 if not filename.endswith('.json'):
                     errors.append(f"{filename}: 无效的文件类型")
                     continue
-                
-                # 构建完整路径
-                if os.path.isabs(filename):
-                    fullpath = filename
-                else:
-                    fullpath = os.path.abspath(os.path.join(CREDENTIALS_DIR, filename))
-                
-                # 确保文件在CREDENTIALS_DIR内（安全检查）
-                credentials_dir_abs = os.path.abspath(CREDENTIALS_DIR)
-                fullpath_abs = os.path.abspath(fullpath)
-                if not fullpath_abs.startswith(credentials_dir_abs):
-                    errors.append(f"{filename}: 文件路径不在允许的目录内")
+
+                # 查找文件所属的用户
+                username = filename_to_username.get(filename)
+                if not username:
+                    errors.append(f"{filename}: 找不到对应的用户")
                     continue
-                
-                if not os.path.exists(fullpath):
-                    errors.append(f"{filename}: 文件不存在")
-                    continue
-                
+
                 # 执行相应操作
-                if action == "enable":
-                    await credential_manager.set_cred_disabled(fullpath, False)
-                    success_count += 1
-                    
-                elif action == "disable":
-                    await credential_manager.set_cred_disabled(fullpath, True)
-                    success_count += 1
-                    
-                elif action == "delete":
-                    try:
-                        os.remove(fullpath)
-                        # 从状态中移除（使用相对路径作为键）
-                        from .credential_manager import _normalize_to_relative_path
-                        relative_filename = _normalize_to_relative_path(fullpath)
-                        
-                        # 检查并移除状态（支持新旧两种键格式）
-                        state_keys_to_remove = []
-                        for key in credential_manager._creds_state.keys():
-                            if key == relative_filename or (os.path.isabs(key) and _normalize_to_relative_path(key) == relative_filename):
-                                state_keys_to_remove.append(key)
-                        
-                        for key in state_keys_to_remove:
-                            del credential_manager._creds_state[key]
-                        
-                        if state_keys_to_remove:
-                            await credential_manager._save_state()
-                        
+                try:
+                    manager = UserCredentialManager(username)
+                    await manager.initialize()
+
+                    if action == "enable":
+                        await manager.set_cred_disabled(filename, False)
                         success_count += 1
-                    except OSError as e:
-                        errors.append(f"{filename}: 删除文件失败 - {str(e)}")
-                        continue
-                else:
-                    errors.append(f"{filename}: 无效的操作类型")
-                    continue
-                    
+                    elif action == "disable":
+                        await manager.set_cred_disabled(filename, True)
+                        success_count += 1
+                    elif action == "delete":
+                        success = await manager.delete_user_credential(filename)
+                        if success:
+                            success_count += 1
+                        else:
+                            errors.append(f"{filename}: 删除失败")
+                    else:
+                        errors.append(f"{filename}: 无效的操作类型")
+
+                    await manager.close()
+
+                except Exception as e:
+                    errors.append(f"{filename}: 操作失败 - {str(e)}")
+
             except Exception as e:
                 log.error(f"Processing {filename} failed: {e}")
                 errors.append(f"{filename}: 处理失败 - {str(e)}")
                 continue
-        
+
         # 构建返回消息
         result_message = f"批量操作完成：成功处理 {success_count}/{len(filenames)} 个文件"
         if errors:
             result_message += f"\n错误详情：\n" + "\n".join(errors)
-            
+
         response_data = {
             "success_count": success_count,
             "total_count": len(filenames),
             "errors": errors,
             "message": result_message
         }
-        
+
         return JSONResponse(content=response_data)
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -594,35 +711,55 @@ async def download_cred_file(filename: str, token: str = Depends(verify_token)):
 async def fetch_user_email(filename: str, token: str = Depends(verify_token)):
     """获取指定凭证文件的用户邮箱地址"""
     try:
-        await ensure_credential_manager_initialized()
-        
-        # 构建完整路径
-        from config import CREDENTIALS_DIR
-        if not os.path.isabs(filename):
-            filepath = os.path.abspath(os.path.join(CREDENTIALS_DIR, os.path.basename(filename)))
-        else:
-            filepath = filename
-        
-        # 验证文件路径安全性
-        if not filepath.endswith('.json') or not os.path.exists(filepath):
+        from .user_aware_credential_manager import UserCredentialManager
+        from .user_database import user_db
+
+        # 查找文件所属的用户
+        users = user_db.get_all_users()
+        username = None
+        user_creds_dir = None
+
+        for user_info in users:
+            user = user_info["username"]
+            manager = UserCredentialManager(user)
+            await manager.initialize()
+            filenames = manager.get_user_credential_files()
+
+            if filename in filenames:
+                username = user
+                user_creds_dir = manager._get_user_credentials_dir()
+                await manager.close()
+                break
+            else:
+                await manager.close()
+
+        if not username or not user_creds_dir:
+            raise HTTPException(status_code=404, detail="找不到对应的用户凭证文件")
+
+        filepath = os.path.join(user_creds_dir, filename)
+
+        if not os.path.exists(filepath):
             raise HTTPException(status_code=404, detail="文件不存在")
-        
-        # 获取用户邮箱
-        email = await credential_manager.get_or_fetch_user_email(filepath)
-        
-        if email:
+
+        # 读取凭证文件获取邮箱
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                cred_data = json.loads(f.read())
+                email = cred_data.get("client_email", "未知")
+
             return JSONResponse(content={
-                "filename": os.path.basename(filepath),
+                "filename": filename,
                 "user_email": email,
                 "message": "成功获取用户邮箱"
             })
-        else:
+        except Exception as e:
+            log.error(f"读取凭证文件失败: {e}")
             return JSONResponse(content={
-                "filename": os.path.basename(filepath),
+                "filename": filename,
                 "user_email": None,
-                "message": "无法获取用户邮箱，可能凭证已过期或权限不足"
+                "message": "无法读取凭证文件"
             }, status_code=400)
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -633,49 +770,73 @@ async def fetch_user_email(filename: str, token: str = Depends(verify_token)):
 async def refresh_all_user_emails(token: str = Depends(verify_token)):
     """刷新所有凭证文件的用户邮箱地址"""
     try:
-        await ensure_credential_manager_initialized()
-        
-        # 获取所有凭证文件
-        from config import CREDENTIALS_DIR
-        import glob
-        
-        json_files = glob.glob(os.path.join(CREDENTIALS_DIR, "*.json"))
-        
+        from .user_aware_credential_manager import UserCredentialManager
+        from .user_database import user_db
+
+        # 获取所有用户
+        users = user_db.get_all_users()
+
         results = []
         success_count = 0
-        
-        for filepath in json_files:
-            try:
-                email = await credential_manager.get_or_fetch_user_email(filepath)
-                if email:
-                    success_count += 1
+
+        for user_info in users:
+            username = user_info["username"]
+            manager = UserCredentialManager(username)
+            await manager.initialize()
+            filenames = manager.get_user_credential_files()
+            user_creds_dir = manager._get_user_credentials_dir()
+
+            for filename in filenames:
+                filepath = os.path.join(user_creds_dir, filename)
+
+                try:
+                    if os.path.exists(filepath):
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            cred_data = json.loads(f.read())
+                            email = cred_data.get("client_email", "未知")
+
+                        if email and email != "未知":
+                            success_count += 1
+                            results.append({
+                                "filename": filename,
+                                "user_email": email,
+                                "username": username,
+                                "success": True
+                            })
+                        else:
+                            results.append({
+                                "filename": filename,
+                                "user_email": None,
+                                "username": username,
+                                "success": False,
+                                "error": "无法获取邮箱"
+                            })
+                    else:
+                        results.append({
+                            "filename": filename,
+                            "user_email": None,
+                            "username": username,
+                            "success": False,
+                            "error": "文件不存在"
+                        })
+                except Exception as e:
                     results.append({
-                        "filename": os.path.basename(filepath),
-                        "user_email": email,
-                        "success": True
-                    })
-                else:
-                    results.append({
-                        "filename": os.path.basename(filepath),
+                        "filename": filename,
                         "user_email": None,
+                        "username": username,
                         "success": False,
-                        "error": "无法获取邮箱"
+                        "error": str(e)
                     })
-            except Exception as e:
-                results.append({
-                    "filename": os.path.basename(filepath),
-                    "user_email": None,
-                    "success": False,
-                    "error": str(e)
-                })
-        
+
+            await manager.close()
+
         return JSONResponse(content={
             "success_count": success_count,
-            "total_count": len(json_files),
+            "total_count": len(results),
             "results": results,
-            "message": f"成功获取 {success_count}/{len(json_files)} 个邮箱地址"
+            "message": f"成功获取 {success_count}/{len(results)} 个邮箱地址"
         })
-        
+
     except Exception as e:
         log.error(f"批量获取用户邮箱失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -717,21 +878,19 @@ async def download_all_creds(token: str = Depends(verify_token)):
 async def get_config(token: str = Depends(verify_token)):
     """获取当前配置"""
     try:
-        await ensure_credential_manager_initialized()
-        
         # 导入配置相关模块
         import config
         import toml
-        
+
         # 读取当前配置（包括环境变量和TOML文件中的配置）
         current_config = {}
         env_locked = []
-        
+
         # 基础配置
         current_config["code_assist_endpoint"] = config.get_code_assist_endpoint()
         current_config["credentials_dir"] = config.get_credentials_dir()
         current_config["proxy"] = config.get_proxy_config() or ""
-        
+
         # 检查环境变量锁定状态
         if os.getenv("CODE_ASSIST_ENDPOINT"):
             env_locked.append("code_assist_endpoint")
@@ -739,53 +898,53 @@ async def get_config(token: str = Depends(verify_token)):
             env_locked.append("credentials_dir")
         if os.getenv("PROXY"):
             env_locked.append("proxy")
-        
+
         # 自动封禁配置
         current_config["auto_ban_enabled"] = config.get_auto_ban_enabled()
         current_config["auto_ban_error_codes"] = config.get_auto_ban_error_codes()
-        
+
         # 检查环境变量锁定状态
         if os.getenv("AUTO_BAN"):
             env_locked.append("auto_ban_enabled")
-        
+
         # 尝试从config.toml文件读取额外配置
         try:
             config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
             if os.path.exists(config_file):
                 with open(config_file, "r", encoding="utf-8") as f:
                     toml_data = toml.load(f)
-                
+
                 # 合并TOML配置（不覆盖环境变量）
                 for key, value in toml_data.items():
                     if key not in env_locked:
                         current_config[key] = value
         except Exception as e:
             log.warning(f"读取TOML配置失败: {e}")
-        
+
         # 性能配置
         current_config["calls_per_rotation"] = config.get_calls_per_rotation()
         current_config["http_timeout"] = config.get_http_timeout()
         current_config["max_connections"] = config.get_max_connections()
-        
+
         # 429重试配置
         current_config["retry_429_max_retries"] = config.get_retry_429_max_retries()
         current_config["retry_429_enabled"] = config.get_retry_429_enabled()
         current_config["retry_429_interval"] = config.get_retry_429_interval()
-        
+
         # 日志配置
         current_config["log_level"] = config.get_log_level()
         current_config["log_file"] = config.get_log_file()
-        
+
         # 抗截断配置
         current_config["anti_truncation_max_attempts"] = config.get_anti_truncation_max_attempts()
-        
+
         # 服务器配置
         current_config["host"] = config.get_server_host()
         current_config["port"] = config.get_server_port()
         current_config["api_password"] = config.get_api_password()
         current_config["panel_password"] = config.get_panel_password()
         current_config["password"] = config.get_server_password()
-        
+
         # 检查其他环境变量锁定状态
         if os.getenv("RETRY_429_MAX_RETRIES"):
             env_locked.append("retry_429_max_retries")
@@ -809,12 +968,12 @@ async def get_config(token: str = Depends(verify_token)):
             env_locked.append("panel_password")
         if os.getenv("PASSWORD"):
             env_locked.append("password")
-        
+
         return JSONResponse(content={
             "config": current_config,
             "env_locked": env_locked
         })
-        
+
     except Exception as e:
         log.error(f"获取配置失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -824,37 +983,35 @@ async def get_config(token: str = Depends(verify_token)):
 async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_token)):
     """保存配置到TOML文件"""
     try:
-        await ensure_credential_manager_initialized()
-        
         import config
         import toml
-        
+
         new_config = request.config
-        
+
         log.info(f"收到的配置数据: {list(new_config.keys())}")
         log.info(f"收到的password值: {new_config.get('password', 'NOT_FOUND')}")
-        
+
         # 验证配置项
         if "calls_per_rotation" in new_config:
             if not isinstance(new_config["calls_per_rotation"], int) or new_config["calls_per_rotation"] < 1:
                 raise HTTPException(status_code=400, detail="凭证轮换调用次数必须是大于0的整数")
-        
+
         if "http_timeout" in new_config:
             if not isinstance(new_config["http_timeout"], int) or new_config["http_timeout"] < 5:
                 raise HTTPException(status_code=400, detail="HTTP超时时间必须是大于等于5的整数")
-        
+
         if "max_connections" in new_config:
             if not isinstance(new_config["max_connections"], int) or new_config["max_connections"] < 10:
                 raise HTTPException(status_code=400, detail="最大连接数必须是大于等于10的整数")
-        
+
         if "retry_429_max_retries" in new_config:
             if not isinstance(new_config["retry_429_max_retries"], int) or new_config["retry_429_max_retries"] < 0:
                 raise HTTPException(status_code=400, detail="最大429重试次数必须是大于等于0的整数")
-        
+
         if "retry_429_enabled" in new_config:
             if not isinstance(new_config["retry_429_enabled"], bool):
                 raise HTTPException(status_code=400, detail="429重试开关必须是布尔值")
-        
+
         # 验证新的配置项
         if "retry_429_interval" in new_config:
             try:
@@ -863,48 +1020,48 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
                     raise HTTPException(status_code=400, detail="429重试间隔必须在0.01-10秒之间")
             except (ValueError, TypeError):
                 raise HTTPException(status_code=400, detail="429重试间隔必须是有效的数字")
-        
+
         if "log_level" in new_config:
             valid_levels = ["debug", "info", "warning", "error", "critical"]
             if new_config["log_level"].lower() not in valid_levels:
                 raise HTTPException(status_code=400, detail=f"日志级别必须是以下之一: {', '.join(valid_levels)}")
-        
+
         if "anti_truncation_max_attempts" in new_config:
             if not isinstance(new_config["anti_truncation_max_attempts"], int) or new_config["anti_truncation_max_attempts"] < 1 or new_config["anti_truncation_max_attempts"] > 10:
                 raise HTTPException(status_code=400, detail="抗截断最大重试次数必须是1-10之间的整数")
-        
+
         # 验证服务器配置
         if "host" in new_config:
             if not isinstance(new_config["host"], str) or not new_config["host"].strip():
                 raise HTTPException(status_code=400, detail="服务器主机地址不能为空")
-        
+
         if "port" in new_config:
             if not isinstance(new_config["port"], int) or new_config["port"] < 1 or new_config["port"] > 65535:
                 raise HTTPException(status_code=400, detail="端口号必须是1-65535之间的整数")
-        
+
         if "api_password" in new_config:
             if not isinstance(new_config["api_password"], str):
                 raise HTTPException(status_code=400, detail="API访问密码必须是字符串")
-        
+
         if "panel_password" in new_config:
             if not isinstance(new_config["panel_password"], str):
                 raise HTTPException(status_code=400, detail="控制面板密码必须是字符串")
-        
+
         if "password" in new_config:
             if not isinstance(new_config["password"], str):
                 raise HTTPException(status_code=400, detail="访问密码必须是字符串")
-        
+
         # 读取现有的配置文件
         config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
         existing_config = {}
-        
+
         try:
             if os.path.exists(config_file):
                 with open(config_file, "r", encoding="utf-8") as f:
                     existing_config = toml.load(f)
         except Exception as e:
             log.warning(f"读取现有配置文件失败: {e}")
-        
+
         # 只更新不被环境变量锁定的配置项
         env_locked_keys = set()
         if os.getenv("CODE_ASSIST_ENDPOINT"):
@@ -937,7 +1094,7 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             env_locked_keys.add("panel_password")
         if os.getenv("PASSWORD"):
             env_locked_keys.add("password")
-        
+
         for key, value in new_config.items():
             if key not in env_locked_keys:
                 existing_config[key] = value
@@ -947,12 +1104,12 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
                     log.info(f"设置api_password字段为: {value}")
                 elif key == 'panel_password':
                     log.info(f"设置panel_password字段为: {value}")
-        
+
         log.info(f"最终保存的existing_config中password = {existing_config.get('password', 'NOT_FOUND')}")
-        
+
         # 使用config模块的保存函数
         config.save_config_to_toml(existing_config)
-        
+
         # 验证保存后的结果
         test_api_password = config.get_api_password()
         test_panel_password = config.get_panel_password()
@@ -960,40 +1117,15 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         log.info(f"保存后立即读取的API密码: {test_api_password}")
         log.info(f"保存后立即读取的面板密码: {test_panel_password}")
         log.info(f"保存后立即读取的通用密码: {test_password}")
-        
-        # 热更新配置到内存中的模块（如果可能）
-        try:
-            # save_config_to_toml已经更新了缓存，不需要reload
-            pass
-            
-            # 更新credential_manager的配置
-            if "calls_per_rotation" in new_config and "calls_per_rotation" not in env_locked_keys:
-                credential_manager._calls_per_rotation = new_config["calls_per_rotation"]
-            
-            # 重新初始化HTTP客户端以应用新的代理配置（如果代理配置更改了）
-            if "proxy" in new_config and "proxy" not in env_locked_keys:
-                # 重新创建HTTP客户端
-                if credential_manager._http_client:
-                    await credential_manager._http_client.aclose()
-                    proxy = config.get_proxy_config()
-                    client_kwargs = {
-                        "timeout": new_config.get("http_timeout", 30),
-                        "limits": __import__('httpx').Limits(
-                            max_keepalive_connections=20, 
-                            max_connections=new_config.get("max_connections", 100)
-                        )
-                    }
-                    if proxy:
-                        client_kwargs["proxy"] = proxy
-                    credential_manager._http_client = __import__('httpx').AsyncClient(**client_kwargs)
-        except Exception as e:
-            log.warning(f"热更新配置失败: {e}")
-        
+
+        # 配置已保存，不需要热更新凭证管理器
+        log.info("配置保存成功，不需要重启服务器即可生效")
+
         return JSONResponse(content={
             "message": "配置保存成功",
             "saved_config": {k: v for k, v in new_config.items() if k not in env_locked_keys}
         })
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1242,41 +1374,127 @@ async def websocket_logs(websocket: WebSocket):
 # =============================================================================
 
 @router.get("/usage/stats")
-async def get_usage_statistics(filename: Optional[str] = None, token: str = Depends(verify_token)):
+async def get_usage_statistics(filename: Optional[str] = None, user: Optional[str] = None, token: str = Depends(verify_token)):
     """
     获取使用统计信息
     
     Args:
         filename: 可选，指定凭证文件名。如果不提供则返回所有文件的统计
+        user: 可选，指定用户名。如果提供则只返回该用户的凭证文件统计
     
     Returns:
         usage statistics for the specified file or all files
     """
     try:
-        stats = await get_usage_stats(filename)
+        if user:
+            # 获取指定用户的凭证文件列表
+            from .user_aware_credential_manager import UserCredentialManager
+            from .user_database import user_db
+
+            user_obj = user_db.get_user_by_username(user)
+            if not user_obj:
+                raise HTTPException(status_code=404, detail="用户不存在")
+
+            try:
+                manager = UserCredentialManager(user)
+                await manager.initialize()
+                user_filenames = manager.get_user_credential_files()
+                await manager.close()
+
+                if filename:
+                    # 检查文件是否属于该用户
+                    if filename not in user_filenames:
+                        raise HTTPException(status_code=404, detail="该用户没有此凭证文件")
+                    stats = await get_usage_stats(filename)
+                else:
+                    # 获取该用户所有凭证文件的统计
+                    all_stats = await get_usage_stats()
+                    stats = {}
+                    for cred_filename in user_filenames:
+                        if cred_filename in all_stats:
+                            stats[cred_filename] = all_stats[cred_filename]
+            except Exception as e:
+                log.warning(f"获取用户 {user} 凭证列表失败: {e}")
+                stats = {}
+        else:
+            stats = await get_usage_stats(filename)
+            
         return JSONResponse(content={
             "success": True,
             "data": stats
         })
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(f"获取使用统计失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/usage/aggregated")
-async def get_aggregated_usage_statistics(token: str = Depends(verify_token)):
+async def get_aggregated_usage_statistics(user: Optional[str] = None, token: str = Depends(verify_token)):
     """
     获取聚合使用统计信息
     
+    Args:
+        user: 可选，指定用户名。如果提供则只返回该用户的聚合统计
+    
     Returns:
-        Aggregated statistics across all credential files
+        Aggregated statistics across all credential files or user-specific files
     """
     try:
-        stats = await get_aggregated_stats()
+        if user:
+            # 获取指定用户的凭证文件列表
+            from .user_aware_credential_manager import UserCredentialManager
+            from .user_database import user_db
+
+            user_obj = user_db.get_user_by_username(user)
+            if not user_obj:
+                raise HTTPException(status_code=404, detail="用户不存在")
+
+            try:
+                manager = UserCredentialManager(user)
+                await manager.initialize()
+                user_filenames = manager.get_user_credential_files()
+                await manager.close()
+
+                # 获取该用户所有凭证文件的统计并聚合
+                all_stats = await get_usage_stats()
+                user_stats = {}
+                for cred_filename in user_filenames:
+                    if cred_filename in all_stats:
+                        user_stats[cred_filename] = all_stats[cred_filename]
+            except Exception as e:
+                log.warning(f"获取用户 {user} 凭证列表失败: {e}")
+                user_stats = {}
+            
+            # 手动聚合用户统计数据
+            total_gemini_calls = 0
+            total_calls = 0
+            total_gemini_limit = 0
+            total_limit = 0
+            
+            for filename, file_stats in user_stats.items():
+                total_gemini_calls += file_stats.get("gemini_2_5_pro_calls", 0)
+                total_calls += file_stats.get("total_calls", 0)
+                total_gemini_limit += file_stats.get("daily_limit_gemini_2_5_pro", 0)
+                total_limit += file_stats.get("daily_limit_total", 0)
+            
+            stats = {
+                "total_gemini_2_5_pro_calls": total_gemini_calls,
+                "total_calls": total_calls,
+                "total_daily_limit_gemini_2_5_pro": total_gemini_limit,
+                "total_daily_limit_total": total_limit,
+                "credential_count": len(user_stats)
+            }
+        else:
+            stats = await get_aggregated_stats()
+            
         return JSONResponse(content={
             "success": True,
             "data": stats
         })
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(f"获取聚合统计失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
