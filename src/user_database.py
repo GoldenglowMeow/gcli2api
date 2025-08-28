@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from log import log
 
 # 数据库文件路径
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'users.db')
+DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data.sqlite')
 
 class UserDatabase:
     def __init__(self):
