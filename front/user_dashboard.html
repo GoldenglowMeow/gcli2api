@@ -630,12 +630,10 @@
             }
             try {
                 const response = await fetch('/user/profile', {
-                    headers: {
-                        'Authorization': `Bearer ${sessionId}`
-                    }
+                    credentials: 'include' // 使用包含Cookie的认证方式
                 });
                 if (!response.ok) {
-                    window.location.href = '/user';
+                    window.location.href = '/dashboard';
                     return;
                 }
                 // 设置用户名和API密钥
@@ -645,7 +643,7 @@
                 displayApiKey(profile.api_key);
             } catch (error) {
                 console.error('加载用户信息失败:', error);
-                window.location.href = '/user';
+                window.location.href = '/dashboard';
             }
         }
         // 加载用户信息 - 此函数保留但不再使用，避免破坏其他可能的引用
@@ -666,38 +664,39 @@
             }
         }
         // 加载凭证列表
-async function loadCredentials() {
-    const sessionId = getCookie('user_session');
-    try {
-        const response = await fetch('/user/usage/combined', {
-            headers: {
-                'Authorization': `Bearer ${sessionId}`
+        async function loadCredentials() {
+            const sessionId = getCookie('user_session');
+            const listContainer = document.getElementById('integratedCredentialsList');
+            listContainer.innerHTML = '<div class="loading">加载数据中...</div>';
+
+            try {
+                // 1. 调用新的、统一的 API 端点
+                const response = await fetch('/user/dashboard-data', {
+                    credentials: 'include' // 使用包含Cookie的认证方式
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '加载数据失败');
+                }
+                
+                const data = await response.json();
+
+                // 2. 更新统计概览
+                const summary = data.summary || {};
+                document.getElementById('totalApiCalls').textContent = summary.total_calls || 0;
+                document.getElementById('geminiProCalls').textContent = summary.gemini_25_pro_calls || 0;
+                document.getElementById('totalFiles').textContent = data.credentials ? data.credentials.length : 0;
+
+                // 3. 显示凭证列表
+                displayCredentials(data.credentials || []);
+
+            } catch (error) {
+                listContainer.innerHTML = `<p style="text-align:center; color: var(--color-danger);">${error.message}</p>`;
+                showStatus(error.message, 'error');
             }
-        });
-        if (response.ok) {
-            const data = await response.json();
-            window.credentialsData = data.credentials;
-            
-            // 为了兼容现有代码，创建usageStatsData对象
-            usageStatsData = {};
-            data.credentials.forEach(cred => {
-                usageStatsData[cred.filename] = cred.usage_stats;
-            });
-            
-            // 更新统计显示
-            const summary = data.summary;
-            document.getElementById('totalApiCalls').textContent = summary.total_all_model_calls || 0;
-            document.getElementById('geminiProCalls').textContent = summary.total_gemini_2_5_pro_calls || 0;
-            document.getElementById('totalFiles').textContent = summary.total_files || 0;
-            
-            displayCredentials(data.credentials);
-        } else {
-            showStatus('加载凭证列表失败', 'error');
         }
-    } catch (error) {
-        showStatus('网络错误', 'error');
-    }
-}
+
         function formatLastUsedTime(isoString) {
             if (!isoString) {
                 return '从未使用';
@@ -722,20 +721,22 @@ async function loadCredentials() {
         // 显示整合的凭证列表和使用统计
         function displayCredentials(credentials) {
             const container = document.getElementById('integratedCredentialsList');
-            if (credentials.length === 0) {
-                container.innerHTML = '<p style="text-align:center; color: var(--text-muted);">暂无凭证文件</p>';
+            if (!credentials || credentials.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color: var(--text-muted);">您还没有上传任何凭证文件。</p>';
                 return;
             }
+
+            // 新的 API 直接在每个凭证对象中包含了所有信息，不再需要全局变量
             container.innerHTML = credentials.map(cred => {
-                const stats = usageStatsData[cred.filename] || {
-                    gemini_2_5_pro_calls: 0,
-                    total_calls: 0,
-                    daily_limit_gemini_2_5_pro: 100,
-                    daily_limit_total: 200,
-                    next_reset_time: null
-                };
-                const geminiPercent = Math.min((stats.gemini_2_5_pro_calls / stats.daily_limit_gemini_2_5_pro) * 100, 100);
-                const totalPercent = Math.min((stats.total_calls / stats.daily_limit_total) * 100, 100);
+                // 直接从 cred 对象获取统计数据
+                const geminiCalls = cred.gemini_25_pro_calls || 0;
+                const totalCalls = cred.total_calls || 0;
+                const geminiLimit = cred.daily_limit_gemini_25_pro || 100;
+                const totalLimit = cred.daily_limit_total || 1500;
+
+                const geminiPercent = geminiLimit > 0 ? Math.min((geminiCalls / geminiLimit) * 100, 100) : 0;
+                const totalPercent = totalLimit > 0 ? Math.min((totalCalls / totalLimit) * 100, 100) : 0;
+
                 function getProgressClass(percent) {
                     if (percent >= 90) return 'danger';
                     if (percent >= 70) return 'warning';
@@ -749,29 +750,29 @@ async function loadCredentials() {
                 function formatTime(isoString) {
                     if (!isoString) return '未知';
                     try {
-                        const date = new Date(isoString);
-                        return date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+                        return new Date(isoString).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
                     } catch (e) {
                         return '格式错误';
                     }
                 }
-                // === 改进点: 更新此处的HTML结构 ===
+
+                // 使用从新 API 获取的字段，如 is_active, name, last_success_at
                 return `
-                <div class="file-item ${cred.is_enabled ? '' : 'disabled'}">
+                <div class="file-item ${cred.is_active ? '' : 'disabled'}">
                     <div class="file-info">
-                        <div class="file-name">${cred.filename}</div>
-                        <div class="status-tag ${cred.is_enabled ? 'enabled' : 'disabled'}">
-                            ${cred.is_enabled ? '启用' : '禁用'}
+                        <div class="file-name">${cred.name}</div>
+                        <div class="status-tag ${cred.is_active ? 'enabled' : 'disabled'}">
+                            ${cred.is_active ? '启用' : '禁用'}
                         </div>
                         <div class="last-used-time">
-                            最后使用: ${formatLastUsedTime(cred.last_used)}
+                            最后成功: ${formatLastUsedTime(cred.last_success_at)}
                         </div>
                     </div>
                     <div class="usage-stats">
                         <div class="usage-progress">
                             <div class="usage-progress-label">
                                 <span>Gemini 2.5 Pro</span>
-                                <span>${stats.gemini_2_5_pro_calls}/${stats.daily_limit_gemini_2_5_pro} (${geminiPercent.toFixed(1)}%)</span>
+                                <span>${geminiCalls}/${geminiLimit} (${geminiPercent.toFixed(1)}%)</span>
                             </div>
                             <div class="usage-progress-bar">
                                 <div class="usage-progress-fill ${getProgressClass(geminiPercent)}" style="width: ${geminiPercent}%;"></div>
@@ -780,30 +781,31 @@ async function loadCredentials() {
                         <div class="usage-progress">
                             <div class="usage-progress-label">
                                 <span>所有模型</span>
-                                <span>${stats.total_calls}/${stats.daily_limit_total} (${totalPercent.toFixed(1)}%)</span>
+                                <span>${totalCalls}/${totalLimit} (${totalPercent.toFixed(1)}%)</span>
                             </div>
                             <div class="usage-progress-bar">
                                 <div class="usage-progress-fill ${getTotalProgressClass(totalPercent)}" style="width: ${totalPercent}%;"></div>
                             </div>
                         </div>
                         <div class="usage-reset-time">
-                            下次重置: ${formatTime(stats.next_reset_time)}
+                            下次重置: ${formatTime(cred.next_reset_at)}
                         </div>
                     </div>
                     <div class="file-actions">
-                        <button onclick="toggleCredential('${cred.filename}', ${!cred.is_enabled})" 
-                                style="background-color: ${cred.is_enabled ? 'var(--color-danger)' : 'var(--color-success)'};">
-                             ${cred.is_enabled ? '禁用' : '启用'}
+                        <button onclick="toggleCredential('${cred.name}', ${!cred.is_active})" 
+                                style="background-color: ${cred.is_active ? 'var(--color-danger)' : 'var(--color-success)'};">
+                            ${cred.is_active ? '禁用' : '启用'}
                         </button>
-                        <button onclick="openLimitsModal('${cred.filename}')" 
+                        <button onclick="openLimitsModal('${cred.name}', ${geminiLimit}, ${totalLimit})" 
                                 style="background-color: var(--accent-primary);">设置限制</button>
-                        <button onclick="deleteCredential('${cred.filename}')" 
+                        <button onclick="deleteCredential('${cred.name}')" 
                                 style="background-color: var(--color-danger);">删除</button>
                     </div>
                 </div>
                 `;
             }).join('');
         }
+
         // 注意：loadApiKey函数已被移除，相关功能已整合到checkAuthAndLoadProfile函数中
         // 显示API密钥
         function displayApiKey(apiKey) {
@@ -971,10 +973,7 @@ async function loadCredentials() {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${sessionId}`
                     },
-                    body: JSON.stringify({
-                        filename: filename,
-                        action: enable ? 'enable' : 'disable'
-                    })
+                    body: JSON.stringify({ name: filename, action: enable ? 'enable' : 'disable' })
                 });
                 if (response.ok) {
                     showStatus(`凭证已${enable ? '启用' : '禁用'}`, 'success');
@@ -999,10 +998,7 @@ async function loadCredentials() {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${sessionId}`
                     },
-                    body: JSON.stringify({
-                        filename: filename,
-                        action: 'delete'
-                    })
+                    body: JSON.stringify({ name: filename, action: 'delete' })
                 });
                 if (response.ok) {
                     showStatus('凭证已删除', 'success');
@@ -1070,16 +1066,11 @@ async function refreshCredentials() {
         // 使用统计相关函数
         let usageStatsData = {};
         let currentEditingFile = '';
-        function openLimitsModal(filename) {
-            let fileStats = usageStatsData[filename];
-            if (!fileStats) {
-                showStatus('找不到文件统计数据', 'error');
-                return;
-            }
+        function openLimitsModal(filename, currentGeminiLimit, currentTotalLimit) {
             currentEditingFile = filename;
             document.getElementById('modalFilenameDisplay').textContent = filename;
-            document.getElementById('modalGeminiLimit').value = fileStats.daily_limit_gemini_2_5_pro;
-            document.getElementById('modalTotalLimit').value = fileStats.daily_limit_total;
+            document.getElementById('modalGeminiLimit').value = currentGeminiLimit;
+            document.getElementById('modalTotalLimit').value = currentTotalLimit;
             document.getElementById('limitsModal').style.display = 'block';
         }
         function closeLimitsModal() {
@@ -1106,7 +1097,7 @@ async function refreshCredentials() {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        filename: currentEditingFile,
+                        name: currentEditingFile,
                         gemini_2_5_pro_limit: geminiLimit,
                         total_limit: totalLimit
                     })

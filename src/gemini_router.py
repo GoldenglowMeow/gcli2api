@@ -70,7 +70,7 @@ def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
     return token
 
-def authenticate_gemini_flexible(
+async def authenticate_gemini_flexible(
     request: Request,
     x_goog_api_key: Optional[str] = Header(None, alias="x-goog-api-key"),
     key: Optional[str] = Query(None),
@@ -111,9 +111,9 @@ def authenticate_gemini_flexible(
         return {"type": "admin", "token": token, "user_id": None}
     
     # 检查是否为用户API密钥
-    user = get_user_by_api_key(token)
+    user = await get_user_by_api_key(token)
     if user:
-        return {"type": "user", "token": token, "user_id": user["user_id"]}
+        return {"type": "user", "token": token, "user_id": user["id"]}
     
     log.error(f"Authentication failed with token: {token[:10]}...")
     raise HTTPException(
@@ -226,13 +226,13 @@ async def generate_content(
             return await process_generate_content(request_data, model, real_model, False, use_anti_truncation, cred_mgr)
     else:  # user type
         user_id = auth_info["user_id"]
-        user = get_user_by_api_key(auth_info["token"])
+        user = await get_user_by_api_key(auth_info["token"])
         async with get_user_credential_manager(user["username"]) as cred_mgr:
             return await process_generate_content(request_data, model, real_model, False, use_anti_truncation, cred_mgr, user_id)
 
 async def process_generate_content(request_data, model, real_model, use_fake_streaming, use_anti_truncation, cred_mgr, user_id=None):
         # 获取凭证
-        creds, project_id = await cred_mgr.get_credentials_and_project()
+        creds, project_id = await cred_mgr.get_credentials()
         if not creds:
             log.error("当前无凭证，请去控制台获取")
             raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
@@ -326,13 +326,13 @@ async def stream_generate_content(
             return await process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr)
     else:  # user type
         user_id = auth_info["user_id"]
-        user = get_user_by_api_key(auth_info["token"])
+        user = await get_user_by_api_key(auth_info["token"])
         async with get_user_credential_manager(user["username"]) as cred_mgr:
             return await process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr, user_id)
 
 async def process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr, user_id=None):
     # 获取凭证
-    creds, project_id = await cred_mgr.get_credentials_and_project()
+    creds, project_id = await cred_mgr.get_credentials()
     if not creds:
         log.error("当前无凭证，请去控制台获取")
         raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
@@ -413,7 +413,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str):
             # 获取凭证管理器
             async with get_credential_manager() as cred_mgr:
                 # 获取凭证
-                creds, project_id = await cred_mgr.get_credentials_and_project()
+                creds, project_id = await cred_mgr.get_credentials()
                 if not creds:
                     log.error("当前无凭证，请去控制台获取")
                     error_chunk = {

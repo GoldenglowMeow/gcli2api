@@ -26,6 +26,7 @@
             --color-success: #43a047;    /* 成功 */
             --font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
+
         /* 2. 基础和全局样式 */
         body {
             font-family: var(--font-family-sans);
@@ -39,6 +40,7 @@
             justify-content: center;
             box-sizing: border-box;
         }
+
         /* 3. 登录容器样式 */
         .container {
             background-color: var(--bg-secondary);
@@ -49,6 +51,7 @@
             width: 100%;
             max-width: 400px;
         }
+
         /* 4. Logo 和标题 */
         .logo {
             text-align: center;
@@ -64,7 +67,37 @@
             color: var(--text-secondary);
             margin: 0;
         }
-        /* 5. 表单元素 (原标签页样式已移除) */
+
+        /* 5. 标签页 (Tabs) */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 25px;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px 24px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            border-bottom: 3px solid transparent;
+            font-size: 16px;
+            text-align: center;
+            transition: color 0.2s ease, border-color 0.2s ease;
+        }
+        .tab:hover {
+            color: var(--text-primary);
+        }
+        .tab.active {
+            color: var(--accent-primary);
+            border-bottom-color: var(--accent-primary);
+            font-weight: 600;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* 6. 表单元素 */
         .form-group {
             margin-bottom: 20px;
         }
@@ -96,7 +129,8 @@
             font-size: 13px;
             color: var(--text-muted);
         }
-        /* 6. 按钮 */
+
+        /* 7. 按钮 */
         .btn {
             background-color: var(--accent-primary);
             color: white; /* 按钮文字用纯白更醒目 */
@@ -117,11 +151,12 @@
             color: #999;
             cursor: not-allowed;
         }
-        /* 7. 状态提示信息 */
+
+        /* 8. 状态提示信息 */
         .status {
             padding: 15px;
             border-radius: 6px;
-            margin: 20px 0 0 0;
+            margin: 20px 0;
             font-weight: 500;
             border: 1px solid transparent;
         }
@@ -138,7 +173,8 @@
         .hidden {
             display: none;
         }
-        /* 8. 底部链接 */
+
+        /* 9. 底部链接 */
         .link {
             text-align: center;
             margin-top: 20px;
@@ -159,11 +195,16 @@
     <div class="container">
         <div class="logo">
             <h1>GG公益站 | GCLI2API</h1>
-            <p>用户登录</p>
+            <p>用户登录 / 注册</p>
         </div>
-        
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('login')">登录</button>
+            <button class="tab" onclick="switchTab('register')">注册</button>
+        </div>
+
         <!-- 登录表单 -->
-        <div id="login-form-container">
+        <div id="login-tab" class="tab-content active">
             <form id="loginForm">
                 <div class="form-group">
                     <label for="loginUsername">用户名</label>
@@ -177,9 +218,44 @@
             </form>
         </div>
 
+        <!-- 注册表单 -->
+        <div id="register-tab" class="tab-content">
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="registerUsername">用户名</label>
+                    <input type="text" id="registerUsername" name="username" required 
+                           pattern="[a-z0-9]+" title="用户名只能包含小写字母和数字">
+                    <small>只能使用小写英文字母和数字</small>
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">密码</label>
+                    <input type="password" id="registerPassword" name="password" required minlength="6">
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">确认密码</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" required>
+                </div>
+                <button type="submit" class="btn">注册</button>
+            </form>
+        </div>
+
         <div id="status" class="status hidden"></div>
     </div>
+
     <script>
+        // JavaScript 部分无需改动，所有功能将正常工作
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.currentTarget.classList.add('active');
+            hideStatus();
+        }
+
         function showStatus(message, type = 'info') {
             const statusDiv = document.getElementById('status');
             statusDiv.textContent = message;
@@ -194,7 +270,6 @@
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            hideStatus(); // 在提交新请求前隐藏旧状态
             const formData = new FormData(e.target);
             const username = formData.get('username');
             const password = formData.get('password');
@@ -210,9 +285,46 @@
                     document.cookie = `user_session=${result.session_id}; path=/; max-age=86400`;
                     setTimeout(() => {
                         window.location.href = '/dashboard';
-                    }, 100);
+                    }, 1000);
                 } else {
                     showStatus(result.detail || '登录失败', 'error');
+                }
+            } catch (error) {
+                showStatus('网络错误，请重试', 'error');
+            }
+        });
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const username = formData.get('username');
+            const password = formData.get('password');
+            const confirmPassword = formData.get('confirmPassword');
+            if (password !== confirmPassword) {
+                showStatus('两次输入的密码不一致', 'error');
+                return;
+            }
+            if (!/^[a-z0-9]+$/.test(username)) {
+                showStatus('用户名只能包含小写字母和数字', 'error');
+                return;
+            }
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showStatus('注册成功！请登录', 'success');
+                    setTimeout(() => {
+                        // 找到登录按钮并模拟点击来切换tab
+                        document.querySelector('.tab[onclick*="login"]').click();
+                        document.getElementById('loginUsername').value = username;
+                        document.getElementById('loginPassword').focus();
+                    }, 1500);
+                } else {
+                    showStatus(result.detail || '注册失败', 'error');
                 }
             } catch (error) {
                 showStatus('网络错误，请重试', 'error');
