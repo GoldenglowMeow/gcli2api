@@ -305,8 +305,19 @@ class CredentialManager:
 
     def is_cred_disabled(self, filename: str) -> bool:
         """检查凭证是否被禁用"""
+        # 获取文件名（不包含路径）
+        basename = os.path.basename(filename)
+        log.debug(f"检查凭证是否被禁用: {basename}")
+        
         cred_state = self._get_cred_state(filename)
-        return cred_state.get("disabled", False)
+        is_disabled = cred_state.get("disabled", False)
+        
+        if is_disabled:
+            log.info(f"凭证被禁用: {basename}")
+        else:
+            log.debug(f"凭证未被禁用: {basename}")
+            
+        return is_disabled
 
     async def set_cred_disabled(self, filename: str, disabled: bool):
         """设置凭证的禁用状态"""
@@ -536,6 +547,7 @@ class CredentialManager:
 
     async def _discover_credential_files_unlocked(self):
         """在锁外进行文件发现操作（用于避免阻塞其他操作）"""
+        log.debug("开始无锁文件发现操作")
         # 这个方法不使用锁，因为主要是文件系统读操作
         # 文件列表的更新会在后续的 _discover_credential_files 中同步
         
@@ -547,40 +559,69 @@ class CredentialManager:
             from config import CREDENTIALS_DIR
             import glob
             
+            log.debug(f"检查环境变量凭证，范围: GOOGLE_CREDENTIALS 到 GOOGLE_CREDENTIALS_10")
             # 检查环境变量凭证（与 _discover_credential_files 保持一致）
+            env_creds_found = 0
             for i in range(1, 11):
                 env_var_name = f"GOOGLE_CREDENTIALS_{i}" if i > 1 else "GOOGLE_CREDENTIALS"
                 env_creds = os.getenv(env_var_name)
                 
                 if env_creds:
+                    log.debug(f"发现环境变量凭证: {env_var_name}")
                     try:
                         # 检查是否为base64编码
                         try:
                             import base64
                             decoded = base64.b64decode(env_creds)
                             env_creds = decoded.decode('utf-8')
+                            log.debug(f"成功解码base64凭证: {env_var_name}")
                         except:
+                            log.debug(f"凭证不是base64编码，直接使用: {env_var_name}")
                             pass
                         
                         # 验证JSON格式
                         import json
                         json.loads(env_creds)
+                        log.debug(f"JSON格式验证成功: {env_var_name}")
                         
                         # 创建临时文件路径标识
                         temp_env_path = f"<ENV_{env_var_name}>"
                         if not self.is_cred_disabled(temp_env_path):
                             temp_files.append(temp_env_path)
+                            env_creds_found += 1
+                            log.info(f"添加可用环境变量凭证: {env_var_name}")
+                        else:
+                            log.debug(f"环境变量凭证被禁用: {env_var_name}")
                         
                     except (json.JSONDecodeError, UnicodeDecodeError) as e:
                         log.error(f"Invalid JSON in {env_var_name}: {e}")
             
+            log.debug(f"环境变量凭证检查完成，找到 {env_creds_found} 个可用凭证")
+            
             # 检查文件系统中的凭证
+            log.debug(f"检查文件系统凭证，目录: {CREDENTIALS_DIR}")
+            file_creds_found = 0
+            disabled_file_creds = 0
             if os.path.exists(CREDENTIALS_DIR):
                 json_pattern = os.path.join(CREDENTIALS_DIR, "*.json")
-                for filepath in glob.glob(json_pattern):
+                all_json_files = glob.glob(json_pattern)
+                log.debug(f"在目录中找到 {len(all_json_files)} 个JSON文件")
+                
+                for filepath in all_json_files:
+                    filename = os.path.basename(filepath)
                     # 检查禁用状态（内部使用相对路径），但文件列表保持绝对路径（供文件I/O使用）
                     if not self.is_cred_disabled(filepath):
                         temp_files.append(os.path.abspath(filepath))
+                        file_creds_found += 1
+                        log.debug(f"添加可用文件凭证: {filename}")
+                    else:
+                        disabled_file_creds += 1
+                        log.debug(f"文件凭证被禁用: {filename}")
+            else:
+                log.warning(f"凭证目录不存在: {CREDENTIALS_DIR}")
+            
+            log.info(f"文件系统凭证检查完成，找到 {file_creds_found} 个可用凭证，{disabled_file_creds} 个被禁用")
+            log.info(f"总计发现 {len(temp_files)} 个可用凭证文件")
             
             # 在锁内快速更新文件列表
             async with self._lock:
@@ -603,6 +644,8 @@ class CredentialManager:
                         
                         if removed_files:
                             log.info(f"移除不可用凭证文件: {list(removed_files)}")
+                else:
+                    log.debug("凭证文件列表无变化")
         
         except Exception as e:
             log.error(f"Error in _discover_credential_files_unlocked: {e}")
@@ -612,20 +655,39 @@ class CredentialManager:
 
     async def _load_credential_with_fallback(self, current_file: str) -> Tuple[Optional[Credentials], Optional[str]]:
         """Load credentials with fallback to next file on failure."""
+        log.debug(f"尝试加载凭证文件: {os.path.basename(current_file)}")
         creds, project_id = await self._load_credentials_from_file(current_file)
+        
         if not creds:
+            log.warning(f"凭证文件加载失败，尝试下一个文件: {os.path.basename(current_file)}")
             # Try next file on failure
+            original_index = self._current_credential_index
             self._current_credential_index = (self._current_credential_index + 1) % len(self._credential_files)
-            if self._current_credential_index < len(self._credential_files):
+            
+            if self._current_credential_index < len(self._credential_files) and self._current_credential_index != original_index:
                 current_file = self._credential_files[self._current_credential_index]
+                log.info(f"切换到下一个凭证文件: {os.path.basename(current_file)} (索引: {self._current_credential_index})")
                 creds, project_id = await self._load_credentials_from_file(current_file)
+                
+                if creds:
+                    log.info(f"备用凭证文件加载成功: {os.path.basename(current_file)}")
+                else:
+                    log.error(f"备用凭证文件也加载失败: {os.path.basename(current_file)}")
+            else:
+                log.error("没有更多可用的凭证文件进行回退")
+        else:
+            log.debug(f"凭证文件加载成功: {os.path.basename(current_file)}")
+            
         return creds, project_id
 
     async def get_credentials(self) -> Tuple[Optional[Credentials], Optional[str]]:
         """Get credentials with call-based rotation, caching and hot reload for performance."""
+        log.debug("开始获取凭证")
+        
         # 第一阶段：快速检查缓存（减少锁持有时间）
         async with self._lock:
             current_calls_per_rotation = get_calls_per_rotation()
+            log.debug(f"当前轮换配置: {current_calls_per_rotation} 次调用后轮换")
             
             # 检查是否可以使用缓存，并验证当前文件是否仍然可用
             if self._is_cache_valid() and self._credential_files:
@@ -637,10 +699,10 @@ class CredentialManager:
                 )
                 
                 if current_file_still_valid:
-                    log.debug(f"Using cached credentials (call count: {self._call_count}/{current_calls_per_rotation})")
+                    log.debug(f"使用缓存的凭证 (调用计数: {self._call_count}/{current_calls_per_rotation})")
                     return self._cached_credentials, self._cached_project_id
                 else:
-                    log.info(f"Current credential file {self._current_file_path} is no longer valid, clearing cache")
+                    log.info(f"当前凭证文件 {self._current_file_path} 不再有效，清除缓存")
                     self._cached_credentials = None
                     self._cached_project_id = None
                     self._cache_timestamp = 0
@@ -653,9 +715,11 @@ class CredentialManager:
                 not self._cached_credentials or  # 无缓存凭证时也检查（确保新文件能被及时发现）
                 current_time - self._last_file_scan_time > 30  # 每30秒至少扫描一次文件
             )
+            log.debug(f"是否需要检查文件: {should_check_files}")
         
         # 第二阶段：如果需要，在锁外进行文件发现（避免阻塞其他操作）
         if should_check_files:
+            log.debug("开始文件发现过程")
             # 文件发现操作不需要锁，因为它主要是读操作
             await self._discover_credential_files_unlocked()
             # 更新扫描时间
@@ -676,25 +740,27 @@ class CredentialManager:
                 )
                 
                 if current_file_still_valid:
-                    log.debug(f"Using cached credentials after file discovery")
+                    log.debug(f"文件发现后使用缓存的凭证")
                     return self._cached_credentials, self._cached_project_id
                 else:
-                    log.info(f"Current credential file {self._current_file_path} is no longer valid after file discovery, forcing reload")
+                    log.info(f"文件发现后当前凭证文件 {self._current_file_path} 不再有效，强制重新加载")
             
             # 需要加载新凭证
             if self._call_count >= current_calls_per_rotation:
-                log.info(f"Rotating credentials after {self._call_count} calls")
+                log.info(f"在 {self._call_count} 次调用后轮换凭证")
             else:
-                log.info("Cache miss - loading fresh credentials")
+                log.info("缓存未命中 - 加载新凭证")
             
             # 轮换凭证
             await self._rotate_credential_if_needed()
             
             if not self._credential_files:
-                log.error("No available credential files")
+                log.error("没有可用的凭证文件")
                 return None, None
             
+            log.debug(f"当前有 {len(self._credential_files)} 个可用凭证文件")
             current_file = self._credential_files[self._current_credential_index]
+            log.info(f"尝试加载凭证文件: {os.path.basename(current_file)} (索引: {self._current_credential_index})")
             
             # 记录当前使用的文件路径
             self._current_file_path = current_file
@@ -705,24 +771,29 @@ class CredentialManager:
         # 第五阶段：更新缓存（短时间持有锁）
         async with self._lock:
             if creds:
+                log.info(f"凭证加载成功，project_id: {project_id}")
                 self._cached_credentials = creds
                 self._cached_project_id = project_id
                 self._cache_timestamp = time.time()
-                log.debug(f"Loaded and cached credentials from {os.path.basename(current_file)}")
+                log.debug(f"已加载并缓存来自 {os.path.basename(current_file)} 的凭证")
             else:
-                log.error(f"Failed to load credentials from {current_file}")
+                log.error(f"从 {current_file} 加载凭证失败")
             
             return creds, project_id
 
     async def _load_credentials_from_file(self, file_path: str) -> Tuple[Optional[Credentials], Optional[str]]:
         """Load credentials from file (optimized)."""
+        log.debug(f"开始加载凭证文件: {file_path}")
         try:
             async with aiofiles.open(file_path, "r") as f:
                 content = await f.read()
+            log.debug(f"成功读取凭证文件内容，长度: {len(content)} 字符")
+            
             creds_data = json.loads(content)
+            log.debug(f"成功解析JSON，包含字段: {list(creds_data.keys())}")
             
             if "refresh_token" not in creds_data or not creds_data["refresh_token"]:
-                log.warning(f"No refresh token in {file_path}")
+                log.warning(f"凭证文件 {file_path} 缺少refresh_token或为空")
                 return None, None
             
             # Auto-add 'type' field if missing but has required OAuth fields
@@ -752,18 +823,31 @@ class CredentialManager:
                     log.warning(f"Could not parse expiry in {file_path}: {e}")
                     del creds_data["expiry"]
             
+            log.debug(f"创建Google Credentials对象，scopes: {creds_data.get('scopes')}")
             creds = Credentials.from_authorized_user_info(creds_data, creds_data.get("scopes"))
             project_id = creds_data.get("project_id")
             setattr(creds, "project_id", project_id)
+            log.debug(f"凭证对象创建成功，project_id: {project_id}")
+            
+            # 检查凭证是否过期
+            log.debug(f"检查凭证过期状态: expired={creds.expired}, expiry={getattr(creds, 'expiry', 'None')}")
             
             # Refresh if needed (but only once per cache cycle)
             if creds.expired and creds.refresh_token:
                 try:
-                    log.debug(f"Refreshing credentials from {file_path}")
+                    log.info(f"凭证已过期，开始刷新: {file_path}")
                     creds.refresh(GoogleAuthRequest())
+                    log.info(f"凭证刷新成功: {file_path}")
                 except Exception as e:
-                    log.warning(f"Failed to refresh credentials from {file_path}: {e}")
+                    log.error(f"凭证刷新失败 {file_path}: {e}")
+                    return None, None
+            elif creds.expired:
+                log.warning(f"凭证已过期但无refresh_token: {file_path}")
+                return None, None
+            else:
+                log.debug(f"凭证未过期，直接使用: {file_path}")
             
+            log.info(f"凭证加载成功: {file_path}")
             return creds, project_id
         except Exception as e:
             log.error(f"Failed to load credentials from {file_path}: {e}")

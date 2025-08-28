@@ -15,6 +15,8 @@ from .models import ChatCompletionRequest, ModelList, Model
 from .openai_transfer import openai_request_to_gemini, gemini_response_to_openai, gemini_stream_chunk_to_openai
 from .google_api_client import send_gemini_request, build_gemini_payload_from_openai
 from .credential_manager import CredentialManager
+from .user_aware_credential_manager import UserAwareCredentialManager
+from .user_routes import get_user_by_api_key
 from .anti_truncation import apply_anti_truncation_to_stream
 from config import get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
 from log import log
@@ -25,6 +27,8 @@ security = HTTPBearer()
 
 # 全局凭证管理器实例
 credential_manager = None
+# 用户凭证管理器实例缓存
+user_credential_managers = {}
 
 @asynccontextmanager
 async def get_credential_manager():
@@ -35,6 +39,32 @@ async def get_credential_manager():
         await credential_manager.initialize()
     yield credential_manager
 
+@asynccontextmanager
+async def get_user_credential_manager(username: str):
+    """获取用户特定的凭证管理器实例（带缓存）"""
+    global user_credential_managers
+    
+    if username not in user_credential_managers:
+        log.debug(f"创建新的用户凭证管理器实例: {username}")
+        user_cred_mgr = UserAwareCredentialManager(username)
+        await user_cred_mgr.initialize()
+        user_credential_managers[username] = user_cred_mgr
+    else:
+        log.debug(f"复用现有的用户凭证管理器实例: {username}")
+    
+    yield user_credential_managers[username]
+
+async def cleanup_user_credential_managers():
+    """清理用户凭证管理器实例缓存"""
+    global user_credential_managers
+    for username, manager in user_credential_managers.items():
+        try:
+            await manager.close()
+        except Exception as e:
+            log.warning(f"关闭用户 {username} 的凭证管理器时出错: {e}")
+    user_credential_managers.clear()
+    log.info("已清理所有用户凭证管理器实例缓存")
+
 def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """验证用户密码"""
     from config import get_api_password
@@ -43,6 +73,23 @@ def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) 
     if token != password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
     return token
+
+def authenticate_flexible(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """灵活验证：支持管理员密码和用户API密钥"""
+    from config import get_api_password
+    admin_password = get_api_password()
+    token = credentials.credentials
+    
+    # 检查是否为管理员密码
+    if token == admin_password:
+        return {"type": "admin", "token": token, "user_id": None}
+    
+    # 检查是否为用户API密钥
+    user = get_user_by_api_key(token)
+    if user:
+        return {"type": "user", "token": token, "user_id": user["user_id"]}
+    
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无效的认证凭据")
 
 @router.get("/v1/models", response_model=ModelList)
 async def list_models():
@@ -53,11 +100,9 @@ async def list_models():
 @router.post("/v1/chat/completions")
 async def chat_completions(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth_info: dict = Depends(authenticate_flexible)
 ):
     """处理OpenAI格式的聊天完成请求"""
-    token = authenticate(credentials)
-    
     # 获取原始请求数据
     try:
         raw_data = await request.json()
@@ -118,70 +163,80 @@ async def chat_completions(
     real_model = get_base_model_from_feature_model(model)
     request_data.model = real_model
     
-    # 获取凭证管理器
-    async with get_credential_manager() as cred_mgr:
-        # 获取凭证
-        creds, project_id = await cred_mgr.get_credentials_and_project()
-        if not creds:
-            log.error("当前无凭证，请去控制台获取")
-            raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
+    # 根据认证类型获取相应的凭证管理器
+    if auth_info["type"] == "admin":
+        async with get_credential_manager() as cred_mgr:
+            return await process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation)
+    else:  # user type
+        user_id = auth_info["user_id"]
+        user = get_user_by_api_key(auth_info["token"])
+        async with get_user_credential_manager(user["username"]) as cred_mgr:
+            return await process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation, user_id)
+
+async def process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation, user_id=None):
+    # 获取凭证
+    creds, project_id = await cred_mgr.get_credentials_and_project()
+    if not creds:
+        log.error("当前无凭证，请去控制台获取")
+        raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
+    
+    # 增加调用计数
+    await cred_mgr.increment_call_count()
+    
+    # 转换为Gemini格式
+    try:
+        gemini_payload = openai_request_to_gemini(request_data)
+    except Exception as e:
+        log.error(f"OpenAI to Gemini conversion failed: {e}")
+        raise HTTPException(status_code=500, detail="Request conversion failed")
+    
+    # 构建Google API payload
+    api_payload = build_gemini_payload_from_openai(gemini_payload)
+    
+    # 处理假流式
+    if use_fake_streaming and getattr(request_data, "stream", False):
+        request_data.stream = False
+        return await fake_stream_response(api_payload, creds, cred_mgr, real_model)
+    
+    # 处理抗截断 (仅流式传输时有效)
+    is_streaming = getattr(request_data, "stream", False)
+    if use_anti_truncation and is_streaming:
+        log.info("启用流式抗截断功能")
+        # 使用全局配置
+        max_attempts = get_anti_truncation_max_attempts()
         
-        # 增加调用计数
-        await cred_mgr.increment_call_count()
+        # 使用流式抗截断处理器
+        gemini_response = await apply_anti_truncation_to_stream(
+            lambda payload: send_gemini_request(payload, True, creds, cred_mgr),
+            api_payload,
+            max_attempts
+        )
         
-        # 转换为Gemini格式
-        try:
-            gemini_payload = openai_request_to_gemini(request_data)
-        except Exception as e:
-            log.error(f"OpenAI to Gemini conversion failed: {e}")
-            raise HTTPException(status_code=500, detail="Request conversion failed")
+        return await convert_streaming_response(gemini_response, model)
+    elif use_anti_truncation and not is_streaming:
+        log.warning("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
+    
+    # 发送请求（429重试已在google_api_client中处理）
+    is_streaming = getattr(request_data, "stream", False)
+    response = await send_gemini_request(api_payload, is_streaming, creds, cred_mgr)
+    
+    # 如果是流式响应，直接返回
+    if is_streaming:
+        return await convert_streaming_response(response, model)
+    
+    # 转换非流式响应
+    try:
+        if hasattr(response, 'body'):
+            response_data = json.loads(response.body.decode() if isinstance(response.body, bytes) else response.body)
+        else:
+            response_data = json.loads(response.content.decode() if isinstance(response.content, bytes) else response.content)
         
-        # 构建Google API payload
-        api_payload = build_gemini_payload_from_openai(gemini_payload)
+        openai_response = gemini_response_to_openai(response_data, model)
+        return JSONResponse(content=openai_response)
         
-        # 处理假流式
-        if use_fake_streaming and getattr(request_data, "stream", False):
-            request_data.stream = False
-            return await fake_stream_response(api_payload, creds, cred_mgr, real_model)
-        
-        # 处理抗截断 (仅流式传输时有效)
-        is_streaming = getattr(request_data, "stream", False)
-        if use_anti_truncation and is_streaming:
-            log.info("启用流式抗截断功能")
-            max_attempts = get_anti_truncation_max_attempts()
-            
-            # 使用流式抗截断处理器
-            gemini_response = await apply_anti_truncation_to_stream(
-                lambda payload: send_gemini_request(payload, True, creds, cred_mgr),
-                api_payload,
-                max_attempts
-            )
-            
-            return await convert_streaming_response(gemini_response, model)
-        elif use_anti_truncation and not is_streaming:
-            log.warning("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
-        
-        # 发送请求（429重试已在google_api_client中处理）
-        is_streaming = getattr(request_data, "stream", False)
-        response = await send_gemini_request(api_payload, is_streaming, creds, cred_mgr)
-        
-        # 如果是流式响应，直接返回
-        if is_streaming:
-            return await convert_streaming_response(response, model)
-        
-        # 转换非流式响应
-        try:
-            if hasattr(response, 'body'):
-                response_data = json.loads(response.body.decode() if isinstance(response.body, bytes) else response.body)
-            else:
-                response_data = json.loads(response.content.decode() if isinstance(response.content, bytes) else response.content)
-            
-            openai_response = gemini_response_to_openai(response_data, model)
-            return JSONResponse(content=openai_response)
-            
-        except Exception as e:
-            log.error(f"Response conversion failed: {e}")
-            raise HTTPException(status_code=500, detail="Response conversion failed")
+    except Exception as e:
+        log.error(f"Response conversion failed: {e}")
+        raise HTTPException(status_code=500, detail="Response conversion failed")
 
 async def fake_stream_response(api_payload: dict, creds, cred_mgr: CredentialManager, model: str):
     """处理假流式响应"""

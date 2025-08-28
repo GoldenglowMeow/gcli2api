@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.openai_router import router as openai_router
 from src.gemini_router import router as gemini_router
 from src.web_routes import router as web_router
+from src.user_routes import router as user_router
 
 # Import managers and utilities
 from src.credential_manager import CredentialManager
@@ -91,6 +92,13 @@ app.include_router(
     web_router,
     prefix="",
     tags=["Web Interface"]
+)
+
+# 用户路由 - 处理用户注册、登录和凭证管理
+app.include_router(
+    user_router,
+    prefix="",
+    tags=["User Management"]
 )
 
 def get_credential_manager():

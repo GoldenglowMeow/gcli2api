@@ -12,6 +12,8 @@ from typing import Optional
 
 from .google_api_client import send_gemini_request, build_gemini_payload_from_native
 from .credential_manager import CredentialManager
+from .user_aware_credential_manager import UserAwareCredentialManager
+from .user_routes import get_user_by_api_key
 from config import get_config_value, get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
 from .anti_truncation import apply_anti_truncation_to_stream
 from config import get_base_model_name
@@ -23,6 +25,8 @@ security = HTTPBearer()
 
 # 全局凭证管理器实例
 credential_manager = None
+# 用户凭证管理器实例缓存
+user_credential_managers = {}
 
 @asynccontextmanager
 async def get_credential_manager():
@@ -32,6 +36,32 @@ async def get_credential_manager():
         credential_manager = CredentialManager()
         await credential_manager.initialize()
     yield credential_manager
+
+@asynccontextmanager
+async def get_user_credential_manager(username: str):
+    """获取用户特定的凭证管理器实例（带缓存）"""
+    global user_credential_managers
+    
+    if username not in user_credential_managers:
+        log.debug(f"创建新的用户凭证管理器实例: {username}")
+        user_cred_mgr = UserAwareCredentialManager(username)
+        await user_cred_mgr.initialize()
+        user_credential_managers[username] = user_cred_mgr
+    else:
+        log.debug(f"复用现有的用户凭证管理器实例: {username}")
+    
+    yield user_credential_managers[username]
+
+async def cleanup_user_credential_managers():
+    """清理用户凭证管理器实例缓存"""
+    global user_credential_managers
+    for username, manager in user_credential_managers.items():
+        try:
+            await manager.close()
+        except Exception as e:
+            log.warning(f"关闭用户 {username} 的凭证管理器时出错: {e}")
+    user_credential_managers.clear()
+    log.info("已清理所有用户凭证管理器实例缓存")
 
 def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """验证用户密码（Bearer Token方式）"""
@@ -47,35 +77,50 @@ def authenticate_gemini_flexible(
     x_goog_api_key: Optional[str] = Header(None, alias="x-goog-api-key"),
     key: Optional[str] = Query(None),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(lambda: None)
-) -> str:
-    """灵活验证：支持x-goog-api-key头部、URL参数key或Authorization Bearer"""
+) -> dict:
+    """灵活验证：支持x-goog-api-key头部、URL参数key或Authorization Bearer，同时支持管理员和用户认证"""
     from config import get_api_password
-    password = get_api_password()
+    admin_password = get_api_password()
+    
+    token = None
     
     # 尝试从URL参数key获取（Google官方标准方式）
     if key:
         log.debug(f"Using URL parameter key authentication")
-        if key == password:
-            return key
+        token = key
     
     # 尝试从Authorization头获取（兼容旧方式）
-    auth_header = request.headers.get("authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header[7:]  # 移除 "Bearer " 前缀
-        log.debug(f"Using Bearer token authentication")
-        if token == password:
-            return token
+    if not token:
+        auth_header = request.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:]  # 移除 "Bearer " 前缀
+            log.debug(f"Using Bearer token authentication")
     
     # 尝试从x-goog-api-key头获取（新标准方式）
-    if x_goog_api_key:
+    if not token and x_goog_api_key:
         log.debug(f"Using x-goog-api-key authentication")
-        if x_goog_api_key == password:
-            return x_goog_api_key
+        token = x_goog_api_key
     
-    log.error(f"Authentication failed. Headers: {dict(request.headers)}, Query params: key={key}")
+    if not token:
+        log.error(f"No authentication token found. Headers: {dict(request.headers)}, Query params: key={key}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Missing authentication. Use 'key' URL parameter, 'x-goog-api-key' header, or 'Authorization: Bearer <token>'"
+        )
+    
+    # 检查是否为管理员密码
+    if token == admin_password:
+        return {"type": "admin", "token": token, "user_id": None}
+    
+    # 检查是否为用户API密钥
+    user = get_user_by_api_key(token)
+    if user:
+        return {"type": "user", "token": token, "user_id": user["user_id"]}
+    
+    log.error(f"Authentication failed with token: {token[:10]}...")
     raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST, 
-        detail="Missing or invalid authentication. Use 'key' URL parameter, 'x-goog-api-key' header, or 'Authorization: Bearer <token>'"
+        status_code=status.HTTP_403_FORBIDDEN, 
+        detail="Invalid authentication token"
     )
 
 @router.get("/v1/v1beta/models")
@@ -119,7 +164,7 @@ async def list_gemini_models():
 async def generate_content(
     model: str = Path(..., description="Model name"),
     request: Request = None,
-    api_key: str = Depends(authenticate_gemini_flexible)
+    auth_info: dict = Depends(authenticate_gemini_flexible)
 ):
     """处理Gemini格式的内容生成请求（非流式）"""
     
@@ -177,8 +222,17 @@ async def generate_content(
             }]
         })
     
-    # 获取凭证管理器
-    async with get_credential_manager() as cred_mgr:
+    # 根据认证类型获取相应的凭证管理器
+    if auth_info["type"] == "admin":
+        async with get_credential_manager() as cred_mgr:
+            return await process_generate_content(request_data, model, real_model, False, use_anti_truncation, cred_mgr)
+    else:  # user type
+        user_id = auth_info["user_id"]
+        user = get_user_by_api_key(auth_info["token"])
+        async with get_user_credential_manager(user["username"]) as cred_mgr:
+            return await process_generate_content(request_data, model, real_model, False, use_anti_truncation, cred_mgr, user_id)
+
+async def process_generate_content(request_data, model, real_model, use_fake_streaming, use_anti_truncation, cred_mgr, user_id=None):
         # 获取凭证
         creds, project_id = await cred_mgr.get_credentials_and_project()
         if not creds:
@@ -224,12 +278,12 @@ async def generate_content(
 async def stream_generate_content(
     model: str = Path(..., description="Model name"),
     request: Request = None,
-    api_key: str = Depends(authenticate_gemini_flexible)
+    auth_info: dict = Depends(authenticate_gemini_flexible)
 ):
     """处理Gemini格式的流式内容生成请求"""
     log.info(f"Stream request received for model: {model}")
     log.info(f"Request headers: {dict(request.headers)}")
-    log.info(f"API key received: {api_key[:10] if api_key else None}...")
+    log.info(f"Auth type: {auth_info['type']}, User ID: {auth_info.get('user_id')}")
     
     # 获取原始请求数据
     try:
@@ -268,40 +322,49 @@ async def stream_generate_content(
     if use_fake_streaming:
         return await fake_stream_response_gemini(request_data, real_model)
     
-    # 获取凭证管理器
-    async with get_credential_manager() as cred_mgr:
-        # 获取凭证
-        creds, project_id = await cred_mgr.get_credentials_and_project()
-        if not creds:
-            log.error("当前无凭证，请去控制台获取")
-            raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
-        
-        # 增加调用计数
-        await cred_mgr.increment_call_count()
-        
-        # 构建Google API payload
-        try:
-            api_payload = build_gemini_payload_from_native(request_data, real_model)
-        except Exception as e:
-            log.error(f"Gemini payload build failed: {e}")
-            raise HTTPException(status_code=500, detail="Request processing failed")
-        
-        # 处理抗截断功能（仅流式传输时有效）
-        if use_anti_truncation:
-            log.info("启用流式抗截断功能")
-            # 使用流式抗截断处理器
-            max_attempts = get_anti_truncation_max_attempts()
-            return await apply_anti_truncation_to_stream(
-                lambda payload: send_gemini_request(payload, True, creds, cred_mgr),
-                api_payload,
-                max_attempts
-            )
-        
-        # 常规流式请求（429重试已在google_api_client中处理）
-        response = await send_gemini_request(api_payload, True, creds, cred_mgr)
-        
-        # 直接返回流式响应
-        return response
+    # 根据认证类型获取相应的凭证管理器
+    if auth_info["type"] == "admin":
+        async with get_credential_manager() as cred_mgr:
+            return await process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr)
+    else:  # user type
+        user_id = auth_info["user_id"]
+        user = get_user_by_api_key(auth_info["token"])
+        async with get_user_credential_manager(user["username"]) as cred_mgr:
+            return await process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr, user_id)
+
+async def process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr, user_id=None):
+    # 获取凭证
+    creds, project_id = await cred_mgr.get_credentials_and_project()
+    if not creds:
+        log.error("当前无凭证，请去控制台获取")
+        raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
+    
+    # 增加调用计数
+    await cred_mgr.increment_call_count()
+    
+    # 构建Google API payload
+    try:
+        api_payload = build_gemini_payload_from_native(request_data, real_model)
+    except Exception as e:
+        log.error(f"Gemini payload build failed: {e}")
+        raise HTTPException(status_code=500, detail="Request processing failed")
+    
+    # 处理抗截断功能（仅流式传输时有效）
+    if use_anti_truncation:
+        log.info("启用流式抗截断功能")
+        # 使用全局配置
+        max_attempts = get_anti_truncation_max_attempts()
+        return await apply_anti_truncation_to_stream(
+            lambda payload: send_gemini_request(payload, True, creds, cred_mgr),
+            api_payload,
+            max_attempts
+        )
+    
+    # 常规流式请求（429重试已在google_api_client中处理）
+    response = await send_gemini_request(api_payload, True, creds, cred_mgr)
+    
+    # 直接返回流式响应
+    return response
     
 @router.get("/v1/v1beta/models/{model:path}")
 @router.get("/v1/v1/models/{model:path}")
@@ -309,9 +372,15 @@ async def stream_generate_content(
 @router.get("/v1/models/{model:path}")
 async def get_model_info(
     model: str = Path(..., description="Model name"),
-    api_key: str = Depends(authenticate_gemini_flexible)
+    auth_info: dict = Depends(authenticate_gemini_flexible)
 ):
     """获取特定模型的信息"""
+    
+    log.info(f"Model info request for: {model}")
+    log.info(f"Auth type: {auth_info['type']}, User ID: {auth_info.get('user_id')}")
+    
+    # 验证用户权限（可选：根据需要添加模型访问控制）
+    # 这里暂时允许所有认证用户访问模型信息
     
     # 获取基础模型名称
     base_model = get_base_model_name(model)

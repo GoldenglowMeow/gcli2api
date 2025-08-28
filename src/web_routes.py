@@ -143,6 +143,36 @@ async def serve_control_panel():
         raise HTTPException(status_code=500, detail="服务器内部错误")
 
 
+@router.get("/user", response_class=HTMLResponse)
+async def serve_user_login():
+    """提供用户登录界面"""
+    try:
+        html_file_path = "front/user_login.html"
+        with open(html_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="用户登录页面不存在")
+    except Exception as e:
+        log.error(f"加载用户登录页面失败: {e}")
+        raise HTTPException(status_code=500, detail="服务器内部错误")
+
+
+@router.get("/user/dashboard", response_class=HTMLResponse)
+async def serve_user_dashboard():
+    """提供用户面板界面"""
+    try:
+        html_file_path = "front/user_dashboard.html"
+        with open(html_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="用户面板页面不存在")
+    except Exception as e:
+        log.error(f"加载用户面板页面失败: {e}")
+        raise HTTPException(status_code=500, detail="服务器内部错误")
+
+
 @router.post("/auth/login")
 async def login(request: LoginRequest):
     """用户登录"""
