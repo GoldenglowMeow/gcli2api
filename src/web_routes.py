@@ -229,6 +229,7 @@ async def get_config(token: str = Depends(verify_token)):
     add_config("log_level", config.get_log_level, "LOG_LEVEL")
     add_config("log_file", config.get_log_file, "LOG_FILE")
     add_config("panel_password", config.get_panel_password, "PANEL_PASSWORD")
+    add_config("bot_api_key", config.get_bot_api_key, "BOT_API_KEY")
 
     return JSONResponse(content={"config": current_config, "env_locked": list(set(env_locked))})
 
