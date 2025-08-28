@@ -135,10 +135,4 @@ if __name__ == "__main__":
     config.loglevel = "INFO"
     config.use_colors = True
 
-    config = Config()
-    config.bind = [f"{host}:{port}"]
-    config.accesslog = "-"
-    config.errorlog = "-"
-    config.loglevel = "INFO"
-
     asyncio.run(serve(app, config))
