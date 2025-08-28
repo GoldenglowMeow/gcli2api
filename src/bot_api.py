@@ -48,11 +48,16 @@ async def bot_register_user(
             return {"success": False, "message": "用户名已存在"}
         
         # 注册新用户
-        user_id = await user_db.create_user(
+        result = await user_db.create_user(
             username=request.username,
-            password=request.password,
-            discord_id=request.discord_id
+            password=request.password
         )
+        
+        # 检查注册结果
+        if not result.get("success"):
+            return {"success": False, "message": result.get("error", "注册失败")}
+            
+        user_id = result.get("user_id")
         
         log.info(f"Bot API成功注册用户: {request.username}")
         return {
