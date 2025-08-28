@@ -83,7 +83,7 @@ class UserDatabase:
                 log.info("用户数据库及凭证表初始化完成")
                 
                 # 检查是否需要创建默认用户
-                await self._create_default_user_if_needed()
+                # await self._create_default_user_if_needed()
         except Exception as e:
             log.error(f"数据库初始化失败: {e}")
             raise
