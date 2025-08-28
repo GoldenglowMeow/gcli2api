@@ -84,3 +84,7 @@ Thumbs.db
 # Logs
 *.log
 log.txt
+
+# DB
+*.db
+*.sqlite

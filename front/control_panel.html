@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,25 +13,30 @@
             padding: 20px;
             background-color: #f5f5f5;
         }
+
         .container {
             background-color: white;
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
+
         h1 {
             color: #333;
             text-align: center;
         }
+
         .form-group {
             margin-bottom: 20px;
         }
+
         label {
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
             color: #555;
         }
+
         input[type="text"] {
             width: 100%;
             padding: 10px;
@@ -39,10 +45,12 @@
             font-size: 16px;
             box-sizing: border-box;
         }
+
         input[type="text"]:focus {
             border-color: #4285f4;
             outline: none;
         }
+
         .btn {
             background-color: #4285f4;
             color: white;
@@ -54,13 +62,16 @@
             width: 100%;
             margin-bottom: 10px;
         }
+
         .btn:hover {
             background-color: #3367d6;
         }
+
         .btn:disabled {
             background-color: #ccc;
             cursor: not-allowed;
         }
+
         .auth-url {
             background-color: #f8f9fa;
             border: 1px solid #e1e4e8;
@@ -69,13 +80,16 @@
             margin: 20px 0;
             word-break: break-all;
         }
+
         .auth-url a {
             color: #4285f4;
             text-decoration: none;
         }
+
         .auth-url a:hover {
             text-decoration: underline;
         }
+
         .credentials {
             background-color: #f0f8ff;
             border: 1px solid #b0d4ff;
@@ -89,37 +103,45 @@
             max-height: 400px;
             overflow-y: auto;
         }
+
         .status {
             padding: 10px;
             border-radius: 5px;
             margin: 10px 0;
         }
+
         .status.success {
             background-color: #d4edda;
             border: 1px solid #c3e6cb;
             color: #155724;
         }
+
         .status.error {
             background-color: #f8d7da;
             border: 1px solid #f5c6cb;
             color: #721c24;
         }
+
         .status.info {
             background-color: #d1ecf1;
             border: 1px solid #bee5eb;
             color: #0c5460;
         }
+
         .hidden {
             display: none;
         }
+
         .loading {
             text-align: center;
             color: #666;
         }
+
         .login-form {
             text-align: center;
             padding: 50px 0;
         }
+
         .login-form input[type="password"] {
             width: 300px;
             padding: 12px;
@@ -129,11 +151,13 @@
             margin-bottom: 20px;
             box-sizing: border-box;
         }
+
         .tabs {
             display: flex;
             border-bottom: 1px solid #ddd;
             margin-bottom: 20px;
         }
+
         .tab {
             padding: 10px 20px;
             cursor: pointer;
@@ -141,17 +165,21 @@
             background: #f5f5f5;
             border-bottom: 2px solid transparent;
         }
+
         .tab.active {
             background: white;
             border-bottom-color: #4285f4;
             color: #4285f4;
         }
+
         .tab-content {
             display: none;
         }
+
         .tab-content.active {
             display: block;
         }
+
         /* 文件管理样式 */
         .cred-card {
             background-color: #f8f9fa;
@@ -161,39 +189,47 @@
             margin: 10px 0;
             position: relative;
         }
+
         .cred-card.disabled {
             background-color: #f5f5f5;
             border-color: #ccc;
             opacity: 0.7;
         }
+
         .cred-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
         }
+
         .cred-filename {
             font-family: monospace;
             font-weight: bold;
             color: #333;
             font-size: 14px;
         }
+
         .cred-status {
             display: flex;
             gap: 5px;
         }
+
         .status-badge {
             padding: 2px 8px;
             border-radius: 12px;
             font-size: 12px;
             color: white;
         }
+
         .status-badge.enabled {
             background-color: #28a745;
         }
+
         .status-badge.disabled {
             background-color: #6c757d;
         }
+
         .error-codes {
             background-color: #f8d7da;
             color: #721c24;
@@ -201,12 +237,14 @@
             border-radius: 12px;
             font-size: 12px;
         }
+
         .cred-actions {
             display: flex;
             gap: 5px;
             flex-wrap: wrap;
             margin-top: 10px;
         }
+
         .cred-btn {
             padding: 4px 12px;
             border: none;
@@ -215,24 +253,29 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
+
         .cred-btn.enable {
             background-color: #28a745;
             color: white;
         }
+
         .cred-btn.disable {
             background-color: #6c757d;
             color: white;
         }
+
         .cred-btn.delete {
             background-color: #dc3545;
             color: white;
         }
+
         .manage-actions {
             margin-bottom: 20px;
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
         }
+
         /* 文件管理新增样式 */
         .stats-container {
             display: flex;
@@ -240,6 +283,7 @@
             margin-bottom: 20px;
             flex-wrap: wrap;
         }
+
         .stat-item {
             background: linear-gradient(45deg, #f8f9fa, #e9ecef);
             border: 1px solid #dee2e6;
@@ -247,23 +291,35 @@
             padding: 12px 20px;
             text-align: center;
             min-width: 120px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
+
         .stat-number {
             font-size: 24px;
             font-weight: bold;
             color: #333;
             display: block;
         }
+
         .stat-label {
             font-size: 12px;
             color: #666;
             text-transform: uppercase;
             margin-top: 4px;
         }
-        .stat-item.total { border-left: 4px solid #007bff; }
-        .stat-item.normal { border-left: 4px solid #28a745; }
-        .stat-item.disabled { border-left: 4px solid #6c757d; }
+
+        .stat-item.total {
+            border-left: 4px solid #007bff;
+        }
+
+        .stat-item.normal {
+            border-left: 4px solid #28a745;
+        }
+
+        .stat-item.disabled {
+            border-left: 4px solid #6c757d;
+        }
+
         .refresh-btn {
             background-color: #17a2b8;
             color: white;
@@ -272,6 +328,7 @@
             border-radius: 4px;
             cursor: pointer;
         }
+
         .download-all-btn {
             background-color: #28a745;
             color: white;
@@ -280,6 +337,7 @@
             border-radius: 4px;
             cursor: pointer;
         }
+
         /* 用户列表样式 */
         .user-item {
             border: 1px solid #dee2e6;
@@ -288,6 +346,7 @@
             background: white;
             overflow: hidden;
         }
+
         .user-header {
             padding: 15px;
             background: #f8f9fa;
@@ -297,41 +356,50 @@
             align-items: center;
             transition: background-color 0.3s ease;
         }
+
         .user-header:hover {
             background: #e9ecef;
         }
+
         .user-info {
             display: flex;
             align-items: center;
             gap: 15px;
         }
+
         .user-name {
             font-weight: bold;
             font-size: 16px;
             color: #333;
         }
+
         .user-stats {
             display: flex;
             gap: 15px;
             font-size: 14px;
             color: #666;
         }
+
         .user-expand-icon {
             font-size: 18px;
             color: #666;
             transition: transform 0.3s ease;
         }
+
         .user-item.expanded .user-expand-icon {
             transform: rotate(90deg);
         }
+
         .user-creds {
             display: none;
             padding: 0 15px 15px 15px;
             border-top: 1px solid #dee2e6;
         }
+
         .user-item.expanded .user-creds {
             display: block;
         }
+
         /* 配置管理样式 */
         .config-group {
             background-color: #f8f9fa;
@@ -340,6 +408,7 @@
             padding: 20px;
             margin: 15px 0;
         }
+
         .config-group h4 {
             margin-top: 0;
             margin-bottom: 15px;
@@ -347,6 +416,7 @@
             border-bottom: 1px solid #e1e4e8;
             padding-bottom: 8px;
         }
+
         .config-input {
             width: 100%;
             padding: 8px 12px;
@@ -356,19 +426,23 @@
             box-sizing: border-box;
             margin-bottom: 5px;
         }
+
         .config-input:focus {
             border-color: #4285f4;
             outline: none;
         }
+
         .config-input:disabled {
             background-color: #f5f5f5;
             color: #666;
             cursor: not-allowed;
         }
+
         .config-checkbox {
             margin-right: 8px;
             transform: scale(1.2);
         }
+
         .config-note {
             display: block;
             color: #666;
@@ -376,6 +450,7 @@
             margin-bottom: 10px;
             font-style: italic;
         }
+
         .config-info {
             background-color: #e3f2fd;
             border: 1px solid #1976d2;
@@ -385,16 +460,20 @@
             font-size: 13px;
             color: #1565c0;
         }
+
         .config-info ul {
             margin: 8px 0 4px 0;
             color: #424242;
         }
+
         .config-info li {
             margin: 3px 0;
         }
+
         .env-locked {
             position: relative;
         }
+
         .env-locked::after {
             content: "🔒 环境变量锚定";
             position: absolute;
@@ -408,6 +487,7 @@
             font-size: 11px;
             pointer-events: none;
         }
+
         /* 使用统计集成样式 */
         .usage-info {
             display: grid;
@@ -416,23 +496,27 @@
             margin-top: 10px;
             font-size: 12px;
         }
+
         .usage-info-item {
             background-color: #ffffff;
             padding: 8px;
             border-radius: 4px;
             border: 1px solid #dee2e6;
         }
+
         .usage-info-label {
             font-weight: bold;
             color: #666;
             display: block;
             margin-bottom: 2px;
         }
+
         .usage-info-value {
             color: #333;
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <!-- 登录界面 -->
@@ -448,11 +532,11 @@
             <h1>Google OAuth 认证管理</h1>
             <!-- 标签页 -->
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('oauth')">OAuth认证</button>
-                <button class="tab" onclick="switchTab('envload')">环境变量</button>
-                <button class="tab" onclick="switchTab('manage')">用户和凭证管理</button>
-                <button class="tab" onclick="switchTab('config')">配置管理</button>
-                <button class="tab" onclick="switchTab('logs')">实时日志</button>
+                <button class="tab active" onclick="switchTab(event, 'oauth')">OAuth认证</button>
+                <button class="tab" onclick="switchTab(event, 'envload')">环境变量</button>
+                <button class="tab" onclick="switchTab(event, 'manage')">用户和凭证管理</button>
+                <button class="tab" onclick="switchTab(event, 'config')">配置管理</button>
+                <button class="tab" onclick="switchTab(event, 'logs')">实时日志</button>
             </div>
             <!-- OAuth认证标签页 -->
             <div id="oauthTab" class="tab-content active">
@@ -463,17 +547,26 @@
                         <li><strong>Gemini Cloud Assist API</strong></li>
                         <li><strong>Gemini for Google Cloud API</strong></li>
                     </ul>
-                    <p style="margin: 10px 0; color: #155724;"><strong>说明：</strong>无需手动启用API，系统会自动处理这些配置步骤，让认证流程更加顺畅。</p>
+                    <p style="margin: 10px 0; color: #155724;"><strong>说明：</strong>无需手动启用API，系统会自动处理这些配置步骤，让认证流程更加顺畅。
+                    </p>
                 </div>
                 <!-- 折叠式 Project ID 输入框 -->
                 <div class="form-group">
-                    <div style="cursor: pointer; user-select: none; padding: 12px; border: 2px solid #ddd; border-radius: 5px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center;" onclick="toggleProjectIdSection()">
-                        <span style="font-weight: bold; color: #555;">📁 高级选项：Google Cloud Project ID (不用管，直接点击获取链接即可)</span>
-                        <span id="projectIdToggleIcon" style="font-size: 14px; color: #666; transition: transform 0.3s ease;">▶</span>
+                    <div style="cursor: pointer; user-select: none; padding: 12px; border: 2px solid #ddd; border-radius: 5px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center;"
+                        onclick="toggleProjectIdSection()">
+                        <span style="font-weight: bold; color: #555;">📁 高级选项：Google Cloud Project ID
+                            (不用管，直接点击获取链接即可)</span>
+                        <span id="projectIdToggleIcon"
+                            style="font-size: 14px; color: #666; transition: transform 0.3s ease;">▶</span>
                     </div>
-                    <div id="projectIdSection" style="display: none; margin-top: 15px; padding: 15px; border: 2px solid #ddd; border-top: none; border-radius: 0 0 5px 5px; background: #ffffff;">
-                        <label for="projectId" style="display: block; margin-bottom: 5px; font-weight: bold; color: #555;">Google Cloud Project ID (可选):</label>
-                        <input type="text" id="projectId" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; box-sizing: border-box;" placeholder="留空将尝试自动检测，或手动输入项目ID" />
+                    <div id="projectIdSection"
+                        style="display: none; margin-top: 15px; padding: 15px; border: 2px solid #ddd; border-top: none; border-radius: 0 0 5px 5px; background: #ffffff;">
+                        <label for="projectId"
+                            style="display: block; margin-bottom: 5px; font-weight: bold; color: #555;">Google Cloud
+                            Project ID (可选):</label>
+                        <input type="text" id="projectId"
+                            style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; box-sizing: border-box;"
+                            placeholder="留空将尝试自动检测，或手动输入项目ID" />
                         <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
                             💡 提示：如果你不懂这是什么，可以留空此字段让系统自动检测项目ID
                         </small>
@@ -535,7 +628,8 @@
                 <div class="manage-actions">
                     <button class="btn" onclick="checkEnvCredsStatus()">刷新状态</button>
                     <button class="btn" onclick="loadEnvCredentials()">从环境变量导入</button>
-                    <button class="btn" style="background-color: #dc3545;" onclick="clearEnvCredentials()">清除环境变量文件</button>
+                    <button class="btn" style="background-color: #dc3545;"
+                        onclick="clearEnvCredentials()">清除环境变量文件</button>
                 </div>
                 <!-- 使用说明 -->
                 <div class="config-group">
@@ -612,12 +706,14 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                             <h4>服务器配置</h4>
                             <div class="form-group">
                                 <label for="host">服务器主机地址:</label>
-                                <input type="text" id="host" class="config-input" placeholder="例如: 0.0.0.0, 127.0.0.1" />
+                                <input type="text" id="host" class="config-input"
+                                    placeholder="例如: 0.0.0.0, 127.0.0.1" />
                                 <small class="config-note">服务器监听的主机地址，0.0.0.0表示监听所有接口</small>
                             </div>
                             <div class="form-group">
                                 <label for="port">服务器端口:</label>
-                                <input type="number" id="port" class="config-input" min="1" max="65535" placeholder="7861" />
+                                <input type="number" id="port" class="config-input" min="1" max="65535"
+                                    placeholder="7861" />
                                 <small class="config-note">服务器监听的端口号，修改后需要重启服务器</small>
                             </div>
                             <div class="form-group">
@@ -650,7 +746,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                             </div>
                             <div class="form-group">
                                 <label for="proxy">代理设置:</label>
-                                <input type="text" id="proxy" class="config-input" placeholder="例如: http://proxy:8080 或 socks5://proxy:1080" />
+                                <input type="text" id="proxy" class="config-input"
+                                    placeholder="例如: http://proxy:8080 或 socks5://proxy:1080" />
                                 <small class="config-note">HTTP/HTTPS/SOCKS5代理地址，留空表示不使用代理</small>
                             </div>
                         </div>
@@ -665,7 +762,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                             </div>
                             <div class="form-group">
                                 <label for="autoBanErrorCodes">自动封禁错误码:</label>
-                                <input type="text" id="autoBanErrorCodes" class="config-input" placeholder="例如: 400,403" />
+                                <input type="text" id="autoBanErrorCodes" class="config-input"
+                                    placeholder="例如: 400,403" />
                                 <small class="config-note">用逗号分隔的错误码列表</small>
                             </div>
                         </div>
@@ -703,7 +801,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                             </div>
                             <div class="form-group">
                                 <label for="retry429Interval">429重试间隔(秒):</label>
-                                <input type="number" id="retry429Interval" class="config-input" min="0.01" max="10" step="0.01" />
+                                <input type="number" id="retry429Interval" class="config-input" min="0.01" max="10"
+                                    step="0.01" />
                                 <small class="config-note">遇到429错误时每两次重试间的等待时间</small>
                             </div>
                         </div>
@@ -730,7 +829,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                             <h4>抗截断配置</h4>
                             <div class="form-group">
                                 <label for="antiTruncationMaxAttempts">抗截断最大重试次数:</label>
-                                <input type="number" id="antiTruncationMaxAttempts" class="config-input" min="1" max="10" />
+                                <input type="number" id="antiTruncationMaxAttempts" class="config-input" min="1"
+                                    max="10" />
                                 <small class="config-note">当检测到输出截断时的最大续传尝试次数</small>
                             </div>
                             <div class="form-group">
@@ -773,19 +873,20 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 <div id="logConnectionStatus" class="status info">
                     <strong>连接状态：</strong> <span id="connectionStatusText">未连接</span>
                 </div>
-                <div id="logContainer" style="background-color: #1e1e1e; color: #ffffff; font-family: 'Courier New', monospace; font-size: 12px; height: 600px; overflow-y: auto; border: 1px solid #333; border-radius: 5px; padding: 15px; white-space: pre-wrap; word-break: break-all;">
+                <div id="logContainer"
+                    style="background-color: #1e1e1e; color: #ffffff; font-family: 'Courier New', monospace; font-size: 12px; height: 600px; overflow-y: auto; border: 1px solid #333; border-radius: 5px; padding: 15px; white-space: pre-wrap; word-break: break-all;">
                     <div id="logContent">等待连接日志流...</div>
                 </div>
             </div>
             <div id="statusSection"></div>
         </div>
     </div>
-    
+
     <script>
         let currentProjectId = '';
         let authInProgress = false;
         let authToken = '';
-        
+
         // 新的全局状态变量
         let allUsers = [];
         let allCredentials = [];
@@ -805,6 +906,31 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             }
         }
 
+        // 保存token到cookie
+        function saveTokenToCookie(token) {
+            // 设置cookie过期时间为24小时
+            const expiryDate = new Date();
+            expiryDate.setTime(expiryDate.getTime() + (24 * 60 * 60 * 1000));
+            document.cookie = `authToken=${token}; expires=${expiryDate.toUTCString()}; path=/`;
+        }
+        
+        // 从cookie获取token
+        function getTokenFromCookie() {
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === 'authToken') {
+                    return value;
+                }
+            }
+            return null;
+        }
+        
+        // 清除token cookie
+        function clearTokenCookie() {
+            document.cookie = 'authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        }
+        
         // 登录相关函数
         async function login() {
             const password = document.getElementById('loginPassword').value;
@@ -821,6 +947,8 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 const data = await response.json();
                 if (response.ok) {
                     authToken = data.token;
+                    // 保存token到cookie
+                    saveTokenToCookie(authToken);
                     document.getElementById('loginSection').classList.add('hidden');
                     document.getElementById('mainSection').classList.remove('hidden');
                     showStatus('登录成功', 'success');
@@ -831,6 +959,36 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 showStatus(`网络错误: ${error.message}`, 'error');
             }
         }
+        
+        // 尝试自动登录
+        async function tryAutoLogin() {
+            const savedToken = getTokenFromCookie();
+            if (savedToken) {
+                try {
+                    // 验证token是否有效
+                    const response = await fetch('/auth/verify', {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${savedToken}` }
+                    });
+                    
+                    if (response.ok) {
+                        // token有效，自动登录
+                        authToken = savedToken;
+                        document.getElementById('loginSection').classList.add('hidden');
+                        document.getElementById('mainSection').classList.remove('hidden');
+                        showStatus('自动登录成功', 'success');
+                        return true;
+                    } else {
+                        // token无效，清除cookie
+                        clearTokenCookie();
+                    }
+                } catch (error) {
+                    console.error('自动登录失败:', error);
+                    clearTokenCookie();
+                }
+            }
+            return false;
+        }
         function handlePasswordEnter(event) {
             if (event.key === 'Enter') {
                 login();
@@ -838,24 +996,15 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         }
 
         // 标签页切换
-        function switchTab(tabName) {
+        function switchTab(event, tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             event.target.classList.add('active');
             document.getElementById(tabName + 'Tab').classList.add('active');
-            
-            if (tabName === 'manage') {
-                fetchDashboardData(); // 调用新的主数据获取函数
-            }
-            if (tabName === 'config') {
-                loadConfig();
-            }
-            if (tabName === 'envload') {
-                checkEnvCredsStatus();
-            }
-            if (tabName === 'logs') {
-                connectWebSocket();
-            }
+            if (tabName === 'manage') fetchDashboardData();
+            if (tabName === 'config') loadConfig();
+            if (tabName === 'envload') checkEnvCredsStatus();
+            if (tabName === 'logs') connectWebSocket();
         }
 
         // 获取认证头
@@ -929,7 +1078,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 btn.textContent = '获取认证文件';
             }
         }
-        
+
         function toggleProjectIdSection() {
             const section = document.getElementById('projectIdSection');
             const icon = document.getElementById('projectIdToggleIcon');
@@ -954,7 +1103,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             try {
                 usersLoading.style.display = 'block';
                 usersListDiv.innerHTML = '';
-                
+
                 const response = await fetch('/admin/dashboard-data', {
                     method: 'GET',
                     headers: getAuthHeaders()
@@ -984,7 +1133,7 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
             // 1. 更新统计概览
             const totalCreds = allCredentials.length;
             const activeCreds = allCredentials.filter(c => c.is_active).length;
-            
+
             document.getElementById('statTotal').textContent = totalCreds;
             document.getElementById('statNormal').textContent = activeCreds;
             document.getElementById('statDisabled').textContent = totalCreds - activeCreds;
@@ -1003,88 +1152,122 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 const userCreds = allCredentials.filter(c => c.user_id === user.id);
                 const userItem = document.createElement('div');
                 userItem.className = 'user-item';
-                userItem.id = `user-${user.username}`;
-                
+                // 渲染用户列表时候用 user.id 做 ID
+                userItem.id = `user-${user.id}`;
                 userItem.innerHTML = `
-                    <div class="user-header" onclick="toggleUserExpand('${user.username}')">
-                        <div class="user-info">
-                            <div class="user-name">${user.username}</div>
-                            <div class="user-stats">
-                                <span>凭证数: ${userCreds.length}</span>
-                            </div>
-                        </div>
-                        <div class="user-expand-icon">▶</div>
-                    </div>
-                    <div class="user-creds" id="creds-container-${user.username}">
-                        <!-- 凭证卡片将在这里渲染 -->
-                    </div>
-                `;
+    <div class="user-header" onclick="toggleUserExpand(${user.id})">
+        <div class="user-info">
+            <div class="user-name">${user.username}</div>
+            <div class="user-stats">
+                <span>凭证数: ${userCreds.length}</span>
+            </div>
+        </div>
+        <div class="user-expand-icon">▶</div>
+    </div>
+    <div class="user-creds" id="creds-container-${user.id}">
+        
+    </div>
+`;
                 usersListDiv.appendChild(userItem);
             });
         }
 
-        function toggleUserExpand(username) {
-            const userItem = document.getElementById(`user-${username}`);
-            const credsContainer = document.getElementById(`creds-container-${username}`);
-            const isExpanded = userItem.classList.toggle('expanded');
+function toggleUserExpand(userId) {
+    console.log('[toggleUserExpand] called with id =', userId);
 
-            if (isExpanded && credsContainer.innerHTML.trim() === '') {
-                // 只有在第一次展开时才渲染内容
-                const userCreds = allCredentials.filter(c => c.username === username);
-                if (userCreds.length === 0) {
-                    credsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 10px;">该用户暂无凭证</p>';
-                } else {
-                    userCreds.forEach(cred => {
-                        credsContainer.appendChild(createCredentialCard(cred));
-                    });
-                }
-            }
+    const userItem = document.getElementById(`user-${userId}`);
+    const credsContainer = document.getElementById(`creds-container-${userId}`);
+    console.log('userItem >>', userItem);
+    console.log('credsContainer >>', credsContainer);
+
+    const isExpanded = userItem.classList.toggle('expanded');
+    console.log('isExpanded =', isExpanded);
+
+    if (isExpanded && credsContainer.innerHTML.trim() === '') {
+        const user = allUsers.find(u => u.id == userId);  // ⭐ 宽松匹配
+        console.log('found user =', user);
+
+        if (!user) {
+            credsContainer.innerHTML = '<p>找不到该用户</p>';
+            return;
         }
+
+        const userCreds = allCredentials.filter(c => c.user_id == user.id); // ⭐ 宽松匹配
+        console.log('userCreds =', userCreds);
+
+        if (userCreds.length === 0) {
+            credsContainer.innerHTML = '<p>该用户暂无凭证</p>';
+        } else {
+            userCreds.forEach(cred => {
+                try {
+                    console.log('→ Creating card for', cred);
+                    const card = createCredentialCard(cred);
+                    console.log('→ Card created:', card);
+                    credsContainer.appendChild(card);
+                } catch (e) {
+                    console.error('❌ createCredentialCard 出错:', e);
+                    credsContainer.innerHTML = '<p>渲染凭证卡片失败</p>';
+                }
+            });
+        }
+    }
+}
+
 
         function createCredentialCard(cred) {
-            const card = document.createElement('div');
-            card.className = cred.is_active ? 'cred-card' : 'cred-card disabled';
+    console.log('[createCredentialCard] cred =', cred);
 
-            const errorCodes = cred.error_codes ? JSON.parse(cred.error_codes) : [];
-            let statusBadges = cred.is_active 
-                ? '<span class="status-badge enabled">已启用</span>'
-                : '<span class="status-badge disabled">已禁用</span>';
-            if (errorCodes.length > 0) {
-                statusBadges += `<span class="error-codes">错误: ${errorCodes.join(', ')}</span>`;
-            }
+    const card = document.createElement('div');
+    card.className = cred.is_active ? 'cred-card' : 'cred-card disabled';
 
-            const actionButton = cred.is_active
-                ? `<button class="cred-btn disable" onclick="credentialAction('${cred.username}', '${cred.name}', 'disable')">禁用</button>`
-                : `<button class="cred-btn enable" onclick="credentialAction('${cred.username}', '${cred.name}', 'enable')">启用</button>`;
-
-            const lastSuccess = cred.last_success_at ? new Date(cred.last_success_at).toLocaleString('zh-CN') : '无';
-
-            card.innerHTML = `
-                <div class="cred-header">
-                    <div class="cred-filename">${cred.name}</div>
-                    <div class="cred-status">${statusBadges}</div>
-                </div>
-                <div class="usage-info">
-                    <div class="usage-info-item">
-                        <span class="usage-info-label">总调用</span>
-                        <span class="usage-info-value">${cred.total_calls || 0}</span>
-                    </div>
-                    <div class="usage-info-item">
-                        <span class="usage-info-label">Gemini 2.5 Pro 调用</span>
-                        <span class="usage-info-value">${cred.gemini_25_pro_calls || 0}</span>
-                    </div>
-                    <div class="usage-info-item" style="grid-column: 1 / -1;">
-                        <span class="usage-info-label">最后成功调用</span>
-                        <span class="usage-info-value">${lastSuccess}</span>
-                    </div>
-                </div>
-                <div class="cred-actions">
-                    ${actionButton}
-                    <button class="cred-btn delete" onclick="credentialAction('${cred.username}', '${cred.name}', 'delete')">删除</button>
-                </div>
-            `;
-            return card;
+    let errorCodes = [];
+    try {
+        if (cred.error_codes) {
+            errorCodes = Array.isArray(cred.error_codes) ? cred.error_codes : JSON.parse(cred.error_codes);
         }
+    } catch(e) {
+        console.warn('⚠️ error_codes 解析失败:', cred.error_codes, e);
+        errorCodes = [];
+    }
+
+    let statusBadges = cred.is_active 
+        ? '<span class="status-badge enabled">已启用</span>'
+        : '<span class="status-badge disabled">已禁用</span>';
+
+    if (errorCodes.length > 0) {
+        statusBadges += `<span class="error-codes">错误: ${errorCodes.join(', ')}</span>`;
+    }
+
+    const lastSuccess = cred.last_success_at ? new Date(cred.last_success_at).toLocaleString('zh-CN') : '无';
+
+    card.innerHTML = `
+        <div class="cred-header">
+            <div class="cred-filename">${cred.name}</div>
+            <div class="cred-status">${statusBadges}</div>
+        </div>
+        <div class="usage-info">
+            <div class="usage-info-item">
+                <span class="usage-info-label">总调用</span>
+                <span class="usage-info-value">${cred.total_calls || 0}</span>
+            </div>
+            <div class="usage-info-item">
+                <span class="usage-info-label">Gemini 2.5 Pro 调用</span>
+                <span class="usage-info-value">${cred.gemini_25_pro_calls || 0}</span>
+            </div>
+            <div class="usage-info-item" style="grid-column: 1 / -1;">
+                <span class="usage-info-label">最后成功调用</span>
+                <span class="usage-info-value">${lastSuccess}</span>
+            </div>
+        </div>
+        <div class="cred-actions">
+            <button class="cred-btn disable" onclick="credentialAction('${cred.username}', '${cred.name}', 'disable')">禁用</button>
+            <button class="cred-btn delete" onclick="credentialAction('${cred.username}', '${cred.name}', 'delete')">删除</button>
+        </div>
+    `;
+
+    return card;
+}
+
 
         async function credentialAction(username, credName, action) {
             if (action === 'delete' && !confirm(`确定要删除用户 '${username}' 的凭证 '${credName}' 吗？此操作不可恢复。`)) {
@@ -1333,12 +1516,12 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                 const wsUrl = `${protocol}//${window.location.host}/auth/logs/stream`;
                 document.getElementById('connectionStatusText').textContent = '连接中...';
                 logWebSocket = new WebSocket(wsUrl);
-                logWebSocket.onopen = function() {
+                logWebSocket.onopen = function () {
                     document.getElementById('connectionStatusText').textContent = '已连接';
                     document.getElementById('logConnectionStatus').className = 'status success';
                     clearLogsDisplay();
                 };
-                logWebSocket.onmessage = function(event) {
+                logWebSocket.onmessage = function (event) {
                     allLogs.push(event.data);
                     if (allLogs.length > 1000) allLogs.shift();
                     filterLogs();
@@ -1347,11 +1530,11 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
                         logContainer.scrollTop = logContainer.scrollHeight;
                     }
                 };
-                logWebSocket.onclose = function() {
+                logWebSocket.onclose = function () {
                     document.getElementById('connectionStatusText').textContent = '连接断开';
                     document.getElementById('logConnectionStatus').className = 'status error';
                 };
-                logWebSocket.onerror = function(error) {
+                logWebSocket.onerror = function (error) {
                     document.getElementById('connectionStatusText').textContent = '连接错误';
                     document.getElementById('logConnectionStatus').className = 'status error';
                 };
@@ -1414,9 +1597,14 @@ docker run -e GCLI_CREDS_1='{"client_id":"..."}' \
         }
 
         // 页面加载时
-        window.onload = function() {
-            showStatus('请输入密码登录', 'info');
+        window.onload = async function () {
+            // 尝试自动登录
+            const autoLoginSuccess = await tryAutoLogin();
+            if (!autoLoginSuccess) {
+                showStatus('请输入密码登录', 'info');
+            }
         };
     </script>
 </body>
+
 </html>

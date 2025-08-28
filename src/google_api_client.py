@@ -158,9 +158,11 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             await asyncio.sleep(retry_interval)
                             continue
                         else:
+                            log.error(f"[RETRY] Max retries exceeded for 429 error")
                             async def error_stream():
-                                yield f'data: {json.dumps({"error": {"message": "429 rate limit exceeded, max retries reached", "type": "api_error", "code": 429}})}\n\n'
-                            return StreamingResponse(error_stream(), media_type="text/event-stream", status_code=429)
+                                error_response = {"error": {"message": f"多次自动重试均遇到429错误，请稍后重试", "type": "api_error", "code": 429}}
+                                yield f'data: {json.dumps(error_response)}\n\n'.encode('utf-8')
+                            return StreamingResponse(error_stream(), media_type="text/event-stream", status_code=200)
                     else:
                         return _handle_streaming_response_managed(resp, stream_ctx, client, credential_manager, payload.get("model", ""))
                 except Exception as e:
@@ -195,7 +197,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             continue
                         else:
                             log.error(f"[RETRY] Max retries exceeded for 429 error")
-                            return _create_error_response("429 rate limit exceeded, max retries reached", 429)
+                            return _create_error_response(f"多次自动重试均遇到429错误，请稍后重试", 429)
                     else:
                         return await _handle_non_streaming_response(resp, credential_manager, payload.get("model", ""))
         except Exception as e:
@@ -231,7 +233,7 @@ def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client:
         try:
             response_content = resp.content.decode('utf-8', 'ignore')
         except: pass
-        return StreamingResponse(cleanup_and_error_stream(resp.status_code, response_content), media_type="text/event-stream", status_code=resp.status_code)
+        return StreamingResponse(cleanup_and_error_stream(resp.status_code, response_content), media_type="text/event-stream", status_code=200)
 
     async def managed_stream_generator():
         success_recorded = False

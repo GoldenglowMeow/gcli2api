@@ -125,6 +125,11 @@ async def login(request: LoginRequest):
     else:
         raise HTTPException(status_code=401, detail="密码错误")
 
+@router.get("/auth/verify")
+async def verify_auth(token: str = Depends(verify_token)):
+    """验证令牌有效性"""
+    return JSONResponse(content={"valid": True, "message": "令牌有效"})
+
 @router.post("/auth/start")
 async def start_auth(request: AuthStartRequest, token: str = Depends(verify_token)):
     """开始认证流程，为管理员添加凭证"""
@@ -328,11 +333,18 @@ async def websocket_logs(websocket: WebSocket):
             await asyncio.sleep(1)
             if os.path.exists(log_file_path):
                 with open(log_file_path, "r", encoding="utf-8") as f:
+                    # 获取文件大小
+                    f.seek(0, os.SEEK_END)
+                    file_size = f.tell()
+                    
                     # 如果文件被截断（如清空）
-                    if f.tell() < last_pos:
+                    if file_size < last_pos:
+                        # 文件确实被截断了，重置位置并只发送一次通知
+                        last_pos = 0
                         f.seek(0)
                         await websocket.send_text("--- 日志已清空 ---")
                     
+                    # 从上次位置继续读取
                     f.seek(last_pos)
                     new_content = f.read()
                     if new_content:

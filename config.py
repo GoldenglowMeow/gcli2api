@@ -21,6 +21,27 @@ AUTO_BAN_ENABLED = os.getenv("AUTO_BAN", "false").lower() in ("true", "1", "yes"
 # 需要自动封禁的错误码 (可通过环境变量 AUTO_BAN_ERROR_CODES 覆盖)
 AUTO_BAN_ERROR_CODES = [400, 403]
 
+# Bot API Key配置
+BOT_API_KEY = os.getenv("BOT_API_KEY", "")
+
+def get_bot_api_key():
+    """获取Bot API Key，优先从环境变量获取，其次从配置文件获取"""
+    # 优先从环境变量获取
+    api_key = os.getenv("BOT_API_KEY")
+    if api_key:
+        return api_key
+    
+    # 从配置文件获取
+    try:
+        config_path = os.getenv("CONFIG_PATH", "config.toml")
+        if os.path.exists(config_path):
+            config_data = toml.load(config_path)
+            return config_data.get("bot_api_key", "")
+    except Exception:
+        pass
+    
+    return ""
+
 # Default Safety Settings for Google API
 DEFAULT_SAFETY_SETTINGS = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},

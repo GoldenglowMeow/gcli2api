@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GG公益站-GCLI2API凭证托管平台用户面板</title>
+    <title>GG公益站-云GCLI</title>
     <style>
         /* 
          * =============================================
@@ -500,12 +500,25 @@
         }
         /* 如果要使用无transform的版本，请将上面.toast的animation改为: animation: simple-fade 4s ease-in-out forwards; */
         /* 当前版本保留了轻微的translateY，因为它能提供更好的视觉反馈且性能良好，如果严格禁止，请使用simple-fade */
+        /* === 新增：移除数字输入框的箭头按钮 === */
+
+        /* 针对 WebKit 浏览器 (Chrome, Safari, Edge, Opera) */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+        -webkit-appearance: none; 
+        margin: 0; 
+        }
+
+        /* 针对 Firefox 浏览器 */
+        input[type=number] {
+        -moz-appearance: textfield;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>GG公益站-GCLI凭证托管平台</h1>
+            <h1>GG公益站-云GCLI</h1>
             <div class="user-info">
                 <span>欢迎，<span id="username">用户</span></span>
                 <button class="logout-btn" onclick="logout()">退出登录</button>
@@ -543,13 +556,13 @@
             </div>
             <!-- 使用说明 -->
             <div class="usage-instructions">
-                <h4>使用说明</h4>
+                <!-- <h4>使用说明</h4> -->
                 <strong>统计范围：</strong>
                 <ul>
                     <li><strong>Gemini 2.5 Pro 调用次数：</strong>仅统计 gemini-2.5-pro 及其变体模型的成功调用，不包含gemini-2.5-pro-0605等</li>
                     <li><strong>所有模型调用次数：</strong>统计所有模型的成功调用总数</li>
                     <li><strong>每日配额：</strong>已默认设置每日配额，您可以为每个文件设置不同的限制</li>
-                    <li><strong>配额重置：</strong>每天 UTC 07:00 自动重置调用计数</li>
+                    <li><strong>配额重置：</strong>每天 UTC 07:00 (北京时间15:00)自动重置调用计数</li>
                     <li><strong>统计规则：</strong>只统计正常返回的API调用（不含错误响应）</li>
                 </ul>
             </div>
@@ -749,11 +762,8 @@
                 }
                 function formatTime(isoString) {
                     if (!isoString) return '未知';
-                    try {
-                        return new Date(isoString).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-                    } catch (e) {
-                        return '格式错误';
-                    }
+                    // 直接复用已有的formatLastUsedTime函数
+                    return formatLastUsedTime(isoString);
                 }
 
                 // 使用从新 API 获取的字段，如 is_active, name, last_success_at
@@ -772,7 +782,7 @@
                         <div class="usage-progress">
                             <div class="usage-progress-label">
                                 <span>Gemini 2.5 Pro</span>
-                                <span>${geminiCalls}/${geminiLimit} (${geminiPercent.toFixed(1)}%)</span>
+                                <span>${geminiCalls}/${geminiLimit}</span>
                             </div>
                             <div class="usage-progress-bar">
                                 <div class="usage-progress-fill ${getProgressClass(geminiPercent)}" style="width: ${geminiPercent}%;"></div>
@@ -781,7 +791,7 @@
                         <div class="usage-progress">
                             <div class="usage-progress-label">
                                 <span>所有模型</span>
-                                <span>${totalCalls}/${totalLimit} (${totalPercent.toFixed(1)}%)</span>
+                                <span>${totalCalls}/${totalLimit}</span>
                             </div>
                             <div class="usage-progress-bar">
                                 <div class="usage-progress-fill ${getTotalProgressClass(totalPercent)}" style="width: ${totalPercent}%;"></div>

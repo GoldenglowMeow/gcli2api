@@ -3,6 +3,8 @@ Main Web Integration - Integrates all routers and modules
 根据修改指导要求，负责集合上述router并开启主服务
 """
 import asyncio
+import signal
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,6 +15,7 @@ from src.openai_router import router as openai_router
 from src.gemini_router import router as gemini_router
 from src.web_routes import router as web_router
 from src.user_routes import router as user_router
+from src.bot_api import router as bot_router
 
 # Import utilities
 from config import get_server_host, get_server_port
@@ -22,6 +25,14 @@ from log import log
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     log.info("启动 GCLI2API 主服务")
+
+    # 初始化用户数据库
+    try:
+        from src.user_database import user_db
+        await user_db.init_database()
+        log.info("用户数据库初始化完成")
+    except Exception as e:
+        log.error(f"初始化用户数据库失败: {e}")
 
     # 自动从环境变量加载凭证（如果有的话）
     try:
@@ -82,12 +93,20 @@ app.include_router(
     tags=["User Management"]
 )
 
+# Bot API路由 - 处理Bot专用API请求
+app.include_router(
+    bot_router,
+    prefix="",
+    tags=["Bot API"]
+)
+
 # 导出给其他模块使用
 __all__ = ['app']
 
 if __name__ == "__main__":
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
+    import platform
     
     # 从环境变量或配置获取端口和主机
     port = get_server_port()
@@ -120,4 +139,53 @@ if __name__ == "__main__":
     config.loglevel = "INFO"
     config.use_colors = True
 
-    asyncio.run(serve(app, config))
+    # 创建一个关闭事件
+    shutdown_event = asyncio.Event()
+    
+    # Windows系统不支持loop.add_signal_handler，使用不同的方法处理信号
+    if platform.system() == "Windows":
+        # Windows下使用简单的asyncio.run，并在KeyboardInterrupt中处理关闭
+        try:
+            asyncio.run(serve(app, config))
+        except KeyboardInterrupt:
+            log.info("接收到键盘中断，正在关闭服务...")
+        finally:
+            log.info("服务已安全关闭")
+    else:
+        # 非Windows系统使用事件循环和信号处理
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # 定义信号处理函数
+        def signal_handler():
+            log.info("接收到关闭信号，正在优雅关闭服务...")
+            shutdown_event.set()
+        
+        # 注册信号处理（仅在非Windows系统上）
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, signal_handler)
+        
+        # 启动服务器
+        server = loop.create_task(serve(app, config, shutdown_trigger=shutdown_event.wait))
+        
+        try:
+            # 运行直到收到关闭信号
+            loop.run_until_complete(server)
+        except KeyboardInterrupt:
+            log.info("接收到键盘中断，正在关闭服务...")
+        finally:
+            # 确保所有任务都被正确关闭
+            pending = asyncio.all_tasks(loop=loop)
+            for task in pending:
+                task.cancel()
+            
+            # 等待所有任务完成
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            
+            # 关闭事件循环
+            loop.close()
+            log.info("服务已安全关闭")
+            
+            # 确保进程正常退出
+            sys.exit(0)

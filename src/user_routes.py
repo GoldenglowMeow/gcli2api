@@ -67,18 +67,19 @@ async def get_user_by_api_key_dependency(credentials: HTTPAuthorizationCredentia
 
 # --- 用户账户路由 ---
 
-@router.post("/register")
-async def register_user(request: UserRegisterRequest):
-    """用户注册"""
-    try:
-        result = await user_db.create_user(request.username, request.password)
-        if result["success"]:
-            return {"success": True, "message": "注册成功", "username": result["username"], "api_key": result["api_key"]}
-        else:
-            raise HTTPException(status_code=400, detail=result["error"])
-    except Exception as e:
-        log.error(f"用户注册失败: {e}")
-        raise HTTPException(status_code=500, detail="注册时发生错误")
+# 公开注册API已禁用，改为使用Bot API进行注册
+# @router.post("/register")
+# async def register_user(request: UserRegisterRequest):
+#     """用户注册"""
+#     try:
+#         result = await user_db.create_user(request.username, request.password)
+#         if result["success"]:
+#             return {"success": True, "message": "注册成功", "username": result["username"], "api_key": result["api_key"]}
+#         else:
+#             raise HTTPException(status_code=400, detail=result["error"])
+#     except Exception as e:
+#         log.error(f"用户注册失败: {e}")
+#         raise HTTPException(status_code=500, detail="注册时发生错误")
 
 @router.post("/login")
 async def login_user(request: UserLoginRequest, response: Response):
@@ -272,13 +273,23 @@ async def get_user_dashboard_data(current_user = Depends(get_current_user)):
             summary_total_calls += cred.get("total_calls", 0)
 
             # 构建扁平化的数据结构，移除嵌套的 usage_stats
+            # 计算下一个UTC 07:00的时间
+            import datetime
+            now = datetime.datetime.utcnow()
+            next_reset = now.replace(hour=7, minute=0, second=0, microsecond=0)
+            if now.hour >= 7:  # 如果当前时间已经过了UTC 07:00，则设置为明天的UTC 07:00
+                next_reset += datetime.timedelta(days=1)
+            
+            # 格式化为与last_success_at一致的格式（带时区信息的ISO格式）
+            next_reset_formatted = next_reset.strftime("%Y-%m-%dT%H:%M:%S.000000+00:00")
+            
             enhanced_credentials.append({
                 "name": cred["name"],
                 "project_id": cred.get("project_id"),
                 "is_active": bool(cred["is_active"]),
                 "created_at": cred["created_at"],
                 "last_success_at": cred.get("last_success_at"),
-                "next_reset_at": cred.get("next_reset_at"),  # <-- 新增：添加重置时间字段
+                "next_reset_at": next_reset_formatted,  # <-- 修改：使用与last_success_at一致的格式
                 "error_codes": json.loads(cred["error_codes"]) if cred.get("error_codes") else [],
                 
                 # --- 扁平化的统计数据 ---

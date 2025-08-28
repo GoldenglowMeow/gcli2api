@@ -81,9 +81,53 @@ class UserDatabase:
                 ''')
                 await db.commit()
                 log.info("用户数据库及凭证表初始化完成")
+                
+                # 检查是否需要创建默认用户
+                await self._create_default_user_if_needed()
         except Exception as e:
             log.error(f"数据库初始化失败: {e}")
             raise
+            
+    async def _create_default_user_if_needed(self):
+        """如果数据库中没有用户，创建一个默认用户"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # 检查是否有用户
+                async with db.execute("SELECT COUNT(*) FROM users") as cursor:
+                    count = await cursor.fetchone()
+                    if count and count[0] > 0:
+                        log.info("数据库中已有用户，跳过默认用户创建")
+                        return
+                
+                # 创建默认用户
+                default_username = "admin"
+                default_password = "admin123"
+                
+                # 检查用户名是否已存在
+                async with db.execute("SELECT id FROM users WHERE username = ?", (default_username,)) as cursor:
+                    if await cursor.fetchone():
+                        log.info(f"默认用户 {default_username} 已存在")
+                        return
+                
+                password_hash, salt = self.hash_password(default_password)
+                api_key = self.generate_api_key()
+                
+                cursor = await db.execute('''
+                    INSERT INTO users (username, password_hash, salt, api_key)
+                    VALUES (?, ?, ?, ?)
+                ''', (default_username, password_hash, salt, api_key))
+                
+                user_id = cursor.lastrowid
+                await db.commit()
+                
+                # 创建用户凭证目录
+                user_creds_dir = os.path.join(os.path.dirname(__file__), '..', 'creds', default_username)
+                os.makedirs(user_creds_dir, exist_ok=True)
+                
+                log.info(f"已创建默认用户 {default_username}，ID: {user_id}，密码: {default_password}")
+        except Exception as e:
+            log.error(f"创建默认用户失败: {e}")
+            # 不抛出异常，让程序继续运行
 
     # --- 辅助方法 (保持同步) ---
     def validate_username(self, username: str) -> bool:
