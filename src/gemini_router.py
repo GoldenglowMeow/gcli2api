@@ -40,15 +40,6 @@ async def get_user_credential_manager(username: str):
 
     yield user_credential_managers[username]
 
-@asynccontextmanager
-async def get_credential_manager():
-    """获取管理员凭证管理器实例"""
-    admin_cred_mgr = UserCredentialManager(username="admin")
-    await admin_cred_mgr.initialize()
-    try:
-        yield admin_cred_mgr
-    finally:
-        await admin_cred_mgr.close()
 
 async def cleanup_user_credential_managers():
     """清理用户凭证管理器实例缓存"""
@@ -76,9 +67,7 @@ async def authenticate_gemini_flexible(
     key: Optional[str] = Query(None),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(lambda: None)
 ) -> dict:
-    """灵活验证：支持x-goog-api-key头部、URL参数key或Authorization Bearer，同时支持管理员和用户认证"""
-    from config import get_api_password
-    admin_password = get_api_password()
+    """简单验证：只检查是否有认证令牌"""
     
     token = None
     
@@ -101,25 +90,19 @@ async def authenticate_gemini_flexible(
     
     if not token:
         log.error(f"No authentication token found. Headers: {dict(request.headers)}, Query params: key={key}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Missing authentication. Use 'key' URL parameter, 'x-goog-api-key' header, or 'Authorization: Bearer <token>'"
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": 400,
+                    "message": "Missing authentication. Use 'key' URL parameter, 'x-goog-api-key' header, or 'Authorization: Bearer <token>'",
+                    "status": "INVALID_ARGUMENT"
+                }
+            }
         )
     
-    # 检查是否为管理员密码
-    if token == admin_password:
-        return {"type": "admin", "token": token, "user_id": None}
-    
-    # 检查是否为用户API密钥
-    user = await get_user_by_api_key(token)
-    if user:
-        return {"type": "user", "token": token, "user_id": user["id"]}
-    
-    log.error(f"Authentication failed with token: {token[:10]}...")
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN, 
-        detail="Invalid authentication token"
-    )
+    # 完全移除用户身份识别，只返回令牌
+    return {"token": token}
 
 @router.get("/v1/v1beta/models")
 @router.get("/v1/v1/models")
@@ -220,22 +203,39 @@ async def generate_content(
             }]
         })
     
-    # 根据认证类型获取相应的凭证管理器
-    if auth_info["type"] == "admin":
-        async with get_credential_manager() as cred_mgr:
-            return await process_generate_content(request_data, model, real_model, False, use_anti_truncation, cred_mgr)
-    else:  # user type
-        user_id = auth_info["user_id"]
-        user = await get_user_by_api_key(auth_info["token"])
-        async with get_user_credential_manager(user["username"]) as cred_mgr:
-            return await process_generate_content(request_data, model, real_model, False, use_anti_truncation, cred_mgr, user_id)
+    # 使用用户自己的凭证
+    user = await get_user_by_api_key(auth_info["token"])
+    if not user:
+        # 返回符合Gemini API格式的错误响应
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": {
+                    "code": 403,
+                    "message": "无效的API密钥",
+                    "status": "PERMISSION_DENIED"
+                }
+            }
+        )
+    
+    async with get_user_credential_manager(user["username"]) as cred_mgr:
+        return await process_generate_content(request_data, model, real_model, False, use_anti_truncation, cred_mgr)
 
-async def process_generate_content(request_data, model, real_model, use_fake_streaming, use_anti_truncation, cred_mgr, user_id=None):
+async def process_generate_content(request_data, model, real_model, use_fake_streaming, use_anti_truncation, cred_mgr):
         # 获取凭证
         creds, project_id = await cred_mgr.get_credentials()
         if not creds:
             log.error("当前无凭证，请去控制台获取")
-            raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "code": 500,
+                        "message": "当前无凭证，请去控制台获取",
+                        "status": "INTERNAL"
+                    }
+                }
+            )
         
         # 增加调用计数
         await cred_mgr.increment_call_count()
@@ -245,7 +245,16 @@ async def process_generate_content(request_data, model, real_model, use_fake_str
             api_payload = build_gemini_payload_from_native(request_data, real_model)
         except Exception as e:
             log.error(f"Gemini payload build failed: {e}")
-            raise HTTPException(status_code=500, detail="Request processing failed")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "code": 500,
+                        "message": "Request processing failed",
+                        "status": "INTERNAL"
+                    }
+                }
+            )
         
         # 发送请求（429重试已在google_api_client中处理）
         response = await send_gemini_request(api_payload, False, creds, cred_mgr)
@@ -267,7 +276,16 @@ async def process_generate_content(request_data, model, real_model, use_fake_str
             if hasattr(response, 'content'):
                 return JSONResponse(content=json.loads(response.content))
             else:
-                raise HTTPException(status_code=500, detail="Response processing failed")
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "error": {
+                            "code": 500,
+                            "message": "Response processing failed",
+                            "status": "INTERNAL"
+                        }
+                    }
+                )
 
 @router.post("/v1/v1beta/models/{model:path}:streamGenerateContent")
 @router.post("/v1/v1/models/{model:path}:streamGenerateContent")
@@ -281,7 +299,6 @@ async def stream_generate_content(
     """处理Gemini格式的流式内容生成请求"""
     log.info(f"Stream request received for model: {model}")
     log.info(f"Request headers: {dict(request.headers)}")
-    log.info(f"Auth type: {auth_info['type']}, User ID: {auth_info.get('user_id')}")
     
     # 获取原始请求数据
     try:
@@ -318,24 +335,44 @@ async def stream_generate_content(
     
     # 对于假流式模型，返回假流式响应
     if use_fake_streaming:
-        return await fake_stream_response_gemini(request_data, real_model)
+        return await fake_stream_response_gemini(request_data, real_model, auth_info)
     
-    # 根据认证类型获取相应的凭证管理器
-    if auth_info["type"] == "admin":
-        async with get_credential_manager() as cred_mgr:
-            return await process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr)
-    else:  # user type
-        user_id = auth_info["user_id"]
-        user = await get_user_by_api_key(auth_info["token"])
-        async with get_user_credential_manager(user["username"]) as cred_mgr:
-            return await process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr, user_id)
+    # 使用用户自己的凭证
+    user = await get_user_by_api_key(auth_info["token"])
+    if not user:
+        # 返回符合Gemini API格式的错误响应
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": {
+                    "code": 403,
+                    "message": "无效的API密钥",
+                    "status": "PERMISSION_DENIED"
+                }
+            }
+        )
+    
+    async with get_user_credential_manager(user["username"]) as cred_mgr:
+        return await process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr)
 
-async def process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr, user_id=None):
+async def process_stream_generate_content(request_data, real_model, use_anti_truncation, cred_mgr):
     # 获取凭证
     creds, project_id = await cred_mgr.get_credentials()
     if not creds:
         log.error("当前无凭证，请去控制台获取")
-        raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
+        # 返回流式错误响应
+        async def error_stream():
+            error_chunk = {
+                "error": {
+                    "code": 500,
+                    "message": "当前无凭证，请去控制台获取",
+                    "status": "INTERNAL"
+                }
+            }
+            yield f"data: {json.dumps(error_chunk)}\n\n".encode()
+            yield "data: [DONE]\n\n".encode()
+        
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
     
     # 增加调用计数
     await cred_mgr.increment_call_count()
@@ -375,7 +412,6 @@ async def get_model_info(
     """获取特定模型的信息"""
     
     log.info(f"Model info request for: {model}")
-    log.info(f"Auth type: {auth_info['type']}, User ID: {auth_info.get('user_id')}")
     
     # 验证用户权限（可选：根据需要添加模型访问控制）
     # 这里暂时允许所有认证用户访问模型信息
@@ -404,14 +440,27 @@ async def get_model_info(
     
     return JSONResponse(content=model_info)
 
-async def fake_stream_response_gemini(request_data: dict, model: str):
+async def fake_stream_response_gemini(request_data: dict, model: str, auth_info: dict):
     """处理Gemini格式的假流式响应"""
     import asyncio
     
     async def gemini_stream_generator():
         try:
-            # 获取凭证管理器
-            async with get_credential_manager() as cred_mgr:
+            # 使用用户自己的凭证
+            user = await get_user_by_api_key(auth_info["token"])
+            if not user:
+                error_chunk = {
+                    "error": {
+                        "message": "无效的API密钥",
+                        "type": "authentication_error",
+                        "code": 403
+                    }
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n".encode()
+                yield "data: [DONE]\n\n".encode()
+                return
+                
+            async with get_user_credential_manager(user["username"]) as cred_mgr:
                 # 获取凭证
                 creds, project_id = await cred_mgr.get_credentials()
                 if not creds:

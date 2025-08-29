@@ -65,19 +65,12 @@ def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) 
     return token
 
 async def authenticate_flexible(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    """灵活验证：支持管理员密码和用户API密钥"""
-    from config import get_api_password
-    admin_password = get_api_password()
+    """简单验证：只检查是否有认证令牌"""
     token = credentials.credentials
     
-    # 检查是否为管理员密码
-    if token == admin_password:
-        return {"type": "admin", "token": token, "user_id": None}
-    
-    # 检查是否为用户API密钥
-    user = await get_user_by_api_key(token)
-    if user:
-        return {"type": "user", "token": token, "user_id": user["id"]}
+    # 只要有令牌就通过认证
+    if token:
+        return {"token": token}
     
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无效的认证凭据")
 
@@ -153,23 +146,15 @@ async def chat_completions(
     real_model = get_base_model_from_feature_model(model)
     request_data.model = real_model
     
-    # 根据认证类型获取相应的凭证管理器
-    if auth_info["type"] == "admin":
-        # 为管理员创建全局凭证管理器
-        admin_cred_mgr = UserCredentialManager()
-        await admin_cred_mgr.initialize()
-        try:
-            result = await process_chat_request(request_data, admin_cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation)
-            return result
-        finally:
-            await admin_cred_mgr.close()
-    else:  # user type
-        user_id = auth_info["user_id"]
-        user = await get_user_by_api_key(auth_info["token"])
-        async with get_user_credential_manager(user["username"]) as cred_mgr:
-            return await process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation, user_id)
+    # 使用全局凭证管理器处理所有请求
+    cred_mgr = UserCredentialManager(username="default")
+    await cred_mgr.initialize()
+    try:
+        return await process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation)
+    finally:
+        await cred_mgr.close()
 
-async def process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation, user_id=None):
+async def process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation):
     # 获取凭证
     creds, project_id = await cred_mgr.get_credentials()
     if not creds:

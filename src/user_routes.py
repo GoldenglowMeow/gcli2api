@@ -55,10 +55,10 @@ async def get_user_by_api_key(credentials = None):
     elif hasattr(credentials, 'credentials'):
         api_key = credentials.credentials
     else:
-        raise HTTPException(status_code=401, detail="需要API密钥")
+        # 不抛出异常，而是返回None
+        return None
     user = await user_db.get_user_by_api_key(api_key)
-    if not user:
-        raise HTTPException(status_code=401, detail="无效的API密钥")
+    # 不抛出异常，而是返回None
     return user
 
 async def get_user_by_api_key_dependency(credentials: HTTPAuthorizationCredentials = Depends(security)):
