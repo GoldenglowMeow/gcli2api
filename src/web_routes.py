@@ -161,11 +161,22 @@ async def get_admin_dashboard_data(token: str = Depends(verify_token)):
     users_data = await user_db.get_all_users()
     all_credentials = []
     
+    # 确保用户数据包含api_key字段
+    for user in users_data:
+        # 保留用户的api_key字段
+        if 'api_key' not in user:
+            user_detail = await user_db.get_user_by_id(user['id'])
+            if user_detail and 'api_key' in user_detail:
+                user['api_key'] = user_detail['api_key']
+    
     for user in users_data:
         user_creds = await user_db.list_credentials_for_user(user['id'])
         for cred in user_creds:
             cred['username'] = user['username']
             cred['is_active'] = bool(cred['is_active'])
+            # 移除credential_data字段
+            if 'credential_data' in cred:
+                del cred['credential_data']
             all_credentials.append(cred)
             
     return JSONResponse(content={
