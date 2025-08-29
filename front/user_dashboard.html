@@ -239,10 +239,16 @@
             color: var(--text-muted);
             font-size: 13px;
         }
+        .file-actions-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
         .file-actions {
             display: flex;
             gap: 8px;
             justify-content: flex-end;
+            margin-bottom: 8px;
         }
         .file-actions button {
             padding: 6px 12px;
@@ -365,6 +371,48 @@
             font-size: 12px;
             color: var(--text-muted);
             margin-top: 2px;
+        }
+        
+        /* 错误码显示样式 */
+        .error-codes {
+            margin-top: 8px;
+        }
+        .error-codes-container {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .error-codes-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .error-codes-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .error-code {
+            display: inline-block;
+            padding: 3px 8px;
+            background-color: var(--color-danger);
+            color: white;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: var(--font-family-mono);
+            font-weight: 600;
+        }
+        .error-code-warning {
+            display: inline-block;
+            padding: 3px 8px;
+            background-color: #e67e22; /* 暗橙色替代明亮的黄色 */
+            color: white; /* 白色文字在橙色背景上更易读 */
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: var(--font-family-mono);
+            font-weight: 600;
         }
         /* 10. 使用说明区域 */
         .usage-instructions {
@@ -783,6 +831,28 @@
                     // 直接复用已有的formatLastUsedTime函数
                     return formatLastUsedTime(isoString);
                 }
+                
+                // 格式化错误码显示
+                function formatErrorCodes(errorCodes) {
+                    if (!errorCodes || errorCodes.length === 0) {
+                        return '';
+                    }
+                    return `
+                    <div class="error-codes">
+                        <div class="error-codes-container">
+                            <span class="error-codes-title">错误码:</span>
+                            <div class="error-codes-list">
+                                ${errorCodes.map(code => {
+                                    // 429错误码使用警告色
+                                    const codeStr = String(code); // 确保转换为字符串
+                                    const errorClass = codeStr === '429' || codeStr === 429 ? 'error-code-warning' : 'error-code';
+                                    return `<span class="${errorClass}">${code}</span>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }
 
                 // 使用从新 API 获取的字段，如 is_active, name, last_success_at
                 return `
@@ -819,15 +889,18 @@
                             下次重置: ${formatTime(cred.next_reset_at)}
                         </div>
                     </div>
-                    <div class="file-actions">
-                        <button onclick="toggleCredential('${cred.name}', ${!cred.is_active})" 
-                                style="background-color: ${cred.is_active ? 'var(--color-danger)' : 'var(--color-success)'};">
-                            ${cred.is_active ? '禁用' : '启用'}
-                        </button>
-                        <button onclick="openLimitsModal('${cred.name}', ${geminiLimit}, ${totalLimit})" 
-                                style="background-color: var(--accent-primary);">设置限制</button>
-                        <button onclick="deleteCredential('${cred.name}')" 
-                                style="background-color: var(--color-danger);">删除</button>
+                    <div class="file-actions-container">
+                        <div class="file-actions">
+                            <button onclick="toggleCredential('${cred.name}', ${!cred.is_active})" 
+                                    style="background-color: ${cred.is_active ? 'var(--color-danger)' : 'var(--color-success)'};">
+                                ${cred.is_active ? '禁用' : '启用'}
+                            </button>
+                            <button onclick="openLimitsModal('${cred.name}', ${geminiLimit}, ${totalLimit})" 
+                                    style="background-color: var(--accent-primary);">设置限制</button>
+                            <button onclick="deleteCredential('${cred.name}')" 
+                                    style="background-color: var(--color-danger);">删除</button>
+                        </div>
+                        ${formatErrorCodes(cred.error_codes)}
                     </div>
                 </div>
                 `;
