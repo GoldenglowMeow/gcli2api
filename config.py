@@ -483,17 +483,3 @@ def get_code_assist_endpoint() -> str:
     Default: https://cloudcode-pa.googleapis.com
     """
     return str(get_config_value("code_assist_endpoint", CODE_ASSIST_ENDPOINT, "CODE_ASSIST_ENDPOINT"))
-
-def get_auto_load_env_creds() -> bool:
-    """
-    Get auto load environment credentials setting.
-    
-    Environment variable: AUTO_LOAD_ENV_CREDS
-    TOML config key: auto_load_env_creds
-    Default: False
-    """
-    env_value = os.getenv("AUTO_LOAD_ENV_CREDS")
-    if env_value:
-        return env_value.lower() in ("true", "1", "yes", "on")
-    
-    return bool(get_config_value("auto_load_env_creds", False))

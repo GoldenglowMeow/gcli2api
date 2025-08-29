@@ -42,13 +42,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"检查并重置过期凭证失败: {e}")
 
-    # 自动从环境变量加载凭证（如果有的话）
-    try:
-        from src.auth_api import auto_load_env_credentials_on_startup
-        auto_load_env_credentials_on_startup()
-    except Exception as e:
-        log.error(f"自动加载环境变量凭证失败: {e}")
-
     # 启动定时任务，每天UTC 07:00重置所有凭证的调用次数
     try:
         import asyncio

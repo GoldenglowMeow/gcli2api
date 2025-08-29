@@ -21,8 +21,7 @@ import config
 from .auth_api import (
     create_auth_url, get_auth_status,
     verify_password, generate_auth_token, verify_auth_token,
-    asyncio_complete_auth_flow,
-    load_credentials_from_env, clear_env_credentials
+    asyncio_complete_auth_flow
 )
 # 核心依赖
 from .user_database import user_db
@@ -263,20 +262,6 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         log.error(f"保存配置失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- 环境变量凭证管理 ---
-@router.post("/auth/load-env-creds")
-async def load_env_credentials(token: str = Depends(verify_token)):
-    """从环境变量加载凭证文件"""
-    result = load_credentials_from_env()
-    return JSONResponse(content=result)
-
-@router.delete("/auth/env-creds")
-async def clear_env_creds(token: str = Depends(verify_token)):
-    """清除所有从环境变量导入的凭证文件"""
-    result = clear_env_credentials()
-    if 'error' in result:
-        raise HTTPException(status_code=500, detail=result['error'])
-    return JSONResponse(content=result)
 
 # --- 文件下载 ---
 @router.get("/creds/download-all-backup")
