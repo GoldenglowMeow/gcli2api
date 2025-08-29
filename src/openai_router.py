@@ -12,7 +12,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .models import ChatCompletionRequest, ModelList, Model
-from .openai_transfer import openai_request_to_gemini, gemini_response_to_openai, gemini_stream_chunk_to_openai
+from .openai_transfer import openai_request_to_gemini, gemini_response_to_openai, gemini_stream_chunk_to_openai, _extract_content_and_reasoning
 from .google_api_client import send_gemini_request, build_gemini_payload_from_openai
 from .user_aware_credential_manager import UserCredentialManager
 from .user_routes import get_user_by_api_key
@@ -55,14 +55,7 @@ async def cleanup_user_credential_managers():
     user_credential_managers.clear()
     log.info("已清理所有用户凭证管理器实例缓存")
 
-def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """验证用户密码"""
-    from config import get_api_password
-    password = get_api_password()
-    token = credentials.credentials
-    if token != password:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
-    return token
+
 
 async def authenticate_flexible(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     """简单验证：只检查是否有认证令牌"""
@@ -72,7 +65,16 @@ async def authenticate_flexible(credentials: HTTPAuthorizationCredentials = Depe
     if token:
         return {"token": token}
     
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无效的认证凭据")
+    return JSONResponse(
+        status_code=403,
+        content={
+            "error": {
+                "code": "invalid_api_key",
+                "message": "无效的认证凭据",
+                "type": "invalid_request_error"
+            }
+        }
+    )
 
 @router.get("/v1/models", response_model=ModelList)
 async def list_models():
@@ -91,14 +93,32 @@ async def chat_completions(
         raw_data = await request.json()
     except Exception as e:
         log.error(f"Failed to parse JSON request: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": "invalid_request_error",
+                    "message": f"Invalid JSON: {str(e)}",
+                    "type": "invalid_request_error"
+                }
+            }
+        )
     
     # 创建请求对象
     try:
         request_data = ChatCompletionRequest(**raw_data)
     except Exception as e:
         log.error(f"Request validation failed: {e}")
-        raise HTTPException(status_code=400, detail=f"Request validation error: {str(e)}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": "invalid_request_error",
+                    "message": f"Request validation error: {str(e)}",
+                    "type": "invalid_request_error"
+                }
+            }
+        )
     
     # 健康检查
     if (len(request_data.messages) == 1 and 
@@ -146,20 +166,39 @@ async def chat_completions(
     real_model = get_base_model_from_feature_model(model)
     request_data.model = real_model
     
-    # 使用全局凭证管理器处理所有请求
-    cred_mgr = UserCredentialManager(username="default")
-    await cred_mgr.initialize()
-    try:
+    # 使用用户提供的API密钥获取用户
+    user = await get_user_by_api_key(auth_info["token"])
+    if not user:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": {
+                    "code": "invalid_api_key",
+                    "message": "无效的API密钥。请确保您使用了正确的API密钥。",
+                    "type": "invalid_request_error"
+                }
+            }
+        )
+    
+    # 使用用户的凭证管理器
+    async with get_user_credential_manager(user["username"]) as cred_mgr:
         return await process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation)
-    finally:
-        await cred_mgr.close()
 
 async def process_chat_request(request_data, cred_mgr, model, real_model, use_fake_streaming, use_anti_truncation):
     # 获取凭证
     creds, project_id = await cred_mgr.get_credentials()
     if not creds:
-        log.error("当前无凭证，请去控制台获取")
-        raise HTTPException(status_code=500, detail="当前无凭证，请去控制台获取")
+        log.error("当前无可用凭证")
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": {
+                    "code": "invalid_credentials",
+                    "message": "无有效的Gemini CLI凭证。请确保您已在用户面板中上传了有效的凭证。",
+                    "type": "invalid_request_error"
+                }
+            }
+        )
     
     # 增加调用计数
     await cred_mgr.increment_call_count()
@@ -169,7 +208,16 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
         gemini_payload = openai_request_to_gemini(request_data)
     except Exception as e:
         log.error(f"OpenAI to Gemini conversion failed: {e}")
-        raise HTTPException(status_code=500, detail="Request conversion failed")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "server_error",
+                    "message": "Request conversion failed",
+                    "type": "server_error"
+                }
+            }
+        )
     
     # 构建Google API payload
     api_payload = build_gemini_payload_from_openai(gemini_payload)
@@ -217,7 +265,16 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
         
     except Exception as e:
         log.error(f"Response conversion failed: {e}")
-        raise HTTPException(status_code=500, detail="Response conversion failed")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "server_error",
+                    "message": "Response conversion failed",
+                    "type": "server_error"
+                }
+            }
+        )
 
 async def fake_stream_response(api_payload: dict, creds, cred_mgr: UserCredentialManager, model: str):
     """处理假流式响应"""
@@ -271,7 +328,6 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: UserCredentia
                 reasoning_content = ""
                 if "candidates" in response_data and response_data["candidates"]:
                     # Gemini格式响应 - 使用思维链分离
-                    from .openai_transfer import _extract_content_and_reasoning
                     candidate = response_data["candidates"][0]
                     if "content" in candidate and "parts" in candidate["content"]:
                         parts = candidate["content"]["parts"]

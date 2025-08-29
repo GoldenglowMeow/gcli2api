@@ -52,14 +52,7 @@ async def cleanup_user_credential_managers():
     user_credential_managers.clear()
     log.info("已清理所有用户凭证管理器实例缓存")
 
-def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """验证用户密码（Bearer Token方式）"""
-    from config import get_api_password
-    password = get_api_password()
-    token = credentials.credentials
-    if token != password:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="密码错误")
-    return token
+
 
 async def authenticate_gemini_flexible(
     request: Request,
@@ -90,15 +83,9 @@ async def authenticate_gemini_flexible(
     
     if not token:
         log.error(f"No authentication token found. Headers: {dict(request.headers)}, Query params: key={key}")
-        return JSONResponse(
+        raise HTTPException(
             status_code=400,
-            content={
-                "error": {
-                    "code": 400,
-                    "message": "Missing authentication. Use 'key' URL parameter, 'x-goog-api-key' header, or 'Authorization: Bearer <token>'",
-                    "status": "INVALID_ARGUMENT"
-                }
-            }
+            detail="缺少认证信息。请使用'key'URL参数、'x-goog-api-key'请求头或'Authorization: Bearer <token>'提供gcli2api密钥"
         )
     
     # 完全移除用户身份识别，只返回令牌
@@ -154,11 +141,29 @@ async def generate_content(
         request_data = await request.json()
     except Exception as e:
         log.error(f"Failed to parse JSON request: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": 400,
+                    "message": f"Invalid JSON: {str(e)}",
+                    "status": "INVALID_ARGUMENT"
+                }
+            }
+        )
     
     # 验证必要字段
     if "contents" not in request_data or not request_data["contents"]:
-        raise HTTPException(status_code=400, detail="Missing required field: contents")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": 400,
+                    "message": "Missing required field: contents",
+                    "status": "INVALID_ARGUMENT"
+                }
+            }
+        )
     
     # 请求预处理：限制参数
     if "generationConfig" in request_data and request_data["generationConfig"]:
@@ -212,7 +217,7 @@ async def generate_content(
             content={
                 "error": {
                     "code": 403,
-                    "message": "无效的API密钥",
+                    "message": "无效的API密钥。请确保您使用了正确的API密钥。",
                     "status": "PERMISSION_DENIED"
                 }
             }
@@ -225,14 +230,14 @@ async def process_generate_content(request_data, model, real_model, use_fake_str
         # 获取凭证
         creds, project_id = await cred_mgr.get_credentials()
         if not creds:
-            log.error("当前无凭证，请去控制台获取")
+            log.error("当前无可用凭证")
             return JSONResponse(
-                status_code=500,
+                status_code=403,
                 content={
                     "error": {
-                        "code": 500,
-                        "message": "当前无凭证，请去控制台获取",
-                        "status": "INTERNAL"
+                        "code": 403,
+                        "message": "无有效的Gemini CLI凭证。请确保您已在用户面板中上传了有效的凭证。",
+                        "status": "PERMISSION_DENIED"
                     }
                 }
             )
@@ -305,11 +310,35 @@ async def stream_generate_content(
         request_data = await request.json()
     except Exception as e:
         log.error(f"Failed to parse JSON request: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+        # 返回流式错误响应
+        async def error_stream():
+            error_chunk = {
+                "error": {
+                    "code": 400,
+                    "message": f"Invalid JSON: {str(e)}",
+                    "status": "INVALID_ARGUMENT"
+                }
+            }
+            yield f"data: {json.dumps(error_chunk)}\n\n".encode()
+            yield "data: [DONE]\n\n".encode()
+        
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
     
     # 验证必要字段
     if "contents" not in request_data or not request_data["contents"]:
-        raise HTTPException(status_code=400, detail="Missing required field: contents")
+        # 返回流式错误响应
+        async def error_stream():
+            error_chunk = {
+                "error": {
+                    "code": 400,
+                    "message": "Missing required field: contents",
+                    "status": "INVALID_ARGUMENT"
+                }
+            }
+            yield f"data: {json.dumps(error_chunk)}\n\n".encode()
+            yield "data: [DONE]\n\n".encode()
+        
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
     
     # 请求预处理：限制参数
     if "generationConfig" in request_data and request_data["generationConfig"]:
@@ -346,7 +375,7 @@ async def stream_generate_content(
             content={
                 "error": {
                     "code": 403,
-                    "message": "无效的API密钥",
+                    "message": "无效的API密钥。请确保您使用了正确的API密钥。",
                     "status": "PERMISSION_DENIED"
                 }
             }
@@ -359,14 +388,14 @@ async def process_stream_generate_content(request_data, real_model, use_anti_tru
     # 获取凭证
     creds, project_id = await cred_mgr.get_credentials()
     if not creds:
-        log.error("当前无凭证，请去控制台获取")
+        log.error("当前无可用凭证")
         # 返回流式错误响应
         async def error_stream():
             error_chunk = {
                 "error": {
-                    "code": 500,
-                    "message": "当前无凭证，请去控制台获取",
-                    "status": "INTERNAL"
+                    "code": 403,
+                    "message": "无有效的Gemini CLI凭证。请确保您已在用户面板中上传了有效的凭证。",
+                    "status": "PERMISSION_DENIED"
                 }
             }
             yield f"data: {json.dumps(error_chunk)}\n\n".encode()
@@ -451,7 +480,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
             if not user:
                 error_chunk = {
                     "error": {
-                        "message": "无效的API密钥",
+                        "message": "无效的API密钥。请确保您使用了正确的API密钥。",
                         "type": "authentication_error",
                         "code": 403
                     }
@@ -464,12 +493,12 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
                 # 获取凭证
                 creds, project_id = await cred_mgr.get_credentials()
                 if not creds:
-                    log.error("当前无凭证，请去控制台获取")
+                    log.error("当前无可用凭证")
                     error_chunk = {
                         "error": {
-                            "message": "当前无凭证，请去控制台获取",
-                            "type": "authentication_error",
-                            "code": 500
+                            "message": "无有效的Gemini CLI凭证。请确保您已在用户面板中上传了有效的凭证。",
+                            "type": "PERMISSION_DENIED",
+                            "code": 403
                         }
                     }
                     yield f"data: {json.dumps(error_chunk)}\n\n".encode()
