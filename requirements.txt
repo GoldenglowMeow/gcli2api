@@ -8,3 +8,5 @@ hypercorn
 aiofiles
 python-multipart
 toml
+aiosqlite
+apscheduler
