@@ -34,6 +34,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"初始化用户数据库失败: {e}")
 
+    # 检查并重置过期凭证的调用次数
+    try:
+        reset_count = await user_db.check_and_reset_expired_credentials()
+        if reset_count > 0:
+            log.info(f"服务器启动时已重置 {reset_count} 个过期凭证的调用统计")
+    except Exception as e:
+        log.error(f"检查并重置过期凭证失败: {e}")
+
     # 自动从环境变量加载凭证（如果有的话）
     try:
         from src.auth_api import auto_load_env_credentials_on_startup
@@ -41,9 +49,38 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"自动加载环境变量凭证失败: {e}")
 
+    # 启动定时任务，每天UTC 07:00重置所有凭证的调用次数
+    try:
+        import asyncio
+        import datetime
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        
+        scheduler = AsyncIOScheduler()
+        
+        # 添加每天UTC 07:00执行的定时任务
+        scheduler.add_job(
+            user_db.reset_daily_usage_for_all_credentials,
+            CronTrigger(hour=7, minute=0, timezone='UTC'),
+            id='reset_daily_usage',
+            name='重置所有凭证的每日调用统计'
+        )
+        
+        scheduler.start()
+        log.info("已启动凭证调用次数重置定时任务，将在每天UTC 07:00执行")
+    except Exception as e:
+        log.error(f"启动定时任务失败: {e}")
+
     # OAuth回调服务器将在需要时按需启动
 
     yield
+
+    # 关闭定时任务
+    try:
+        scheduler.shutdown()
+        log.info("已关闭定时任务调度器")
+    except Exception as e:
+        log.error(f"关闭定时任务调度器失败: {e}")
 
     log.info("GCLI2API 主服务已停止")
 

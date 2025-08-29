@@ -206,13 +206,25 @@ class UserDatabase:
     # --- 凭证管理 (CRUD) (异步) ---
     async def add_credential(self, user_id: int, name: str, credential_data: str, project_id: Optional[str] = None, user_email: Optional[str] = None) -> Optional[int]:
         try:
+            # 计算下一个UTC 07:00的时间
+            import datetime
+            now = datetime.datetime.utcnow()
+            next_reset = now.replace(hour=7, minute=0, second=0, microsecond=0)
+            if now.hour >= 7:  # 如果当前时间已经过了UTC 07:00，则设置为明天的UTC 07:00
+                next_reset += datetime.timedelta(days=1)
+            
+            # 格式化为ISO格式（带时区信息）
+            next_reset_formatted = next_reset.strftime("%Y-%m-%dT%H:%M:%S.000000+00:00")
+            
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute('''
-                    INSERT INTO credentials (user_id, name, credential_data, project_id, user_email)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (user_id, name, credential_data, project_id, user_email))
+                    INSERT INTO credentials (user_id, name, credential_data, project_id, user_email, next_reset_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (user_id, name, credential_data, project_id, user_email, next_reset_formatted))
                 cred_id = cursor.lastrowid
                 await db.commit()
+                
+                log.info(f"为用户ID {user_id} 添加凭证 {name} (ID: {cred_id})，下次重置时间设为 {next_reset_formatted}")
 
                 user_info = await self.get_user_by_id(user_id)
                 if user_info:
@@ -299,6 +311,7 @@ class UserDatabase:
         except Exception as e:
             log.error(f"更新凭证ID {cred_id} 失败: {e}")
             return False
+            
 
     async def reset_daily_usage_for_all_credentials(self) -> bool:
         try:
@@ -310,6 +323,64 @@ class UserDatabase:
         except Exception as e:
             log.error(f"重置凭证每日用量失败: {e}")
             return False
+            
+    async def reset_daily_usage_for_credential(self, cred_id: int) -> bool:
+        """重置单个凭证的每日调用统计并更新下次重置时间"""
+        try:
+            # 计算下一个UTC 07:00的时间
+            import datetime
+            now = datetime.datetime.utcnow()
+            next_reset = now.replace(hour=7, minute=0, second=0, microsecond=0)
+            if now.hour >= 7:  # 如果当前时间已经过了UTC 07:00，则设置为明天的UTC 07:00
+                next_reset += datetime.timedelta(days=1)
+            
+            # 格式化为ISO格式（带时区信息）
+            next_reset_formatted = next_reset.strftime("%Y-%m-%dT%H:%M:%S.000000+00:00")
+            
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute(
+                    "UPDATE credentials SET total_calls = 0, gemini_25_pro_calls = 0, next_reset_at = ? WHERE id = ?", 
+                    (next_reset_formatted, cred_id)
+                )
+                await db.commit()
+                if cursor.rowcount > 0:
+                    log.info(f"已重置凭证ID {cred_id} 的每日调用统计，下次重置时间设为 {next_reset_formatted}")
+                    return True
+                else:
+                    log.warning(f"未找到凭证ID {cred_id} 或重置失败")
+                    return False
+        except Exception as e:
+            log.error(f"重置凭证ID {cred_id} 的每日用量失败: {e}")
+            return False
+            
+    async def check_and_reset_expired_credentials(self) -> int:
+        """检查并重置所有过期的凭证调用次数，返回重置的凭证数量"""
+        try:
+            import datetime
+            now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000000+00:00")
+            
+            # 先获取所有需要重置的凭证ID
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = sqlite3.Row
+                # 查找next_reset_at为空或已过期的凭证
+                async with db.execute(
+                    "SELECT id FROM credentials WHERE next_reset_at IS NULL OR next_reset_at <= ?", 
+                    (now,)
+                ) as cursor:
+                    expired_creds = await cursor.fetchall()
+            
+            # 重置每个过期凭证
+            reset_count = 0
+            for cred in expired_creds:
+                if await self.reset_daily_usage_for_credential(cred['id']):
+                    reset_count += 1
+            
+            if reset_count > 0:
+                log.info(f"服务器启动时检查: 已重置 {reset_count} 个过期凭证的调用统计")
+            return reset_count
+        except Exception as e:
+            log.error(f"检查并重置过期凭证失败: {e}")
+            return 0
 
     # --- 用户信息获取 (异步) ---
     async def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
