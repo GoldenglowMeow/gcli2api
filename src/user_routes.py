@@ -123,7 +123,7 @@ async def regenerate_user_api_key(request: RegenerateApiKeyRequest, current_user
     # 确保current_user不是协程对象
     if hasattr(current_user, "__await__"):
         current_user = await current_user
-    result = await user_db.regenerate_api_key(current_user["id"])
+    result = await user_db.regenerate_api_key(current_user["user_id"])
     if result["success"]:
         return {"success": True, "message": "API密钥重新生成成功", "api_key": result["api_key"]}
     else:
