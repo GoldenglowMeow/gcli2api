@@ -174,39 +174,23 @@
             border-radius: 8px;
             padding: 15px 20px;
             margin: 15px 0;
+            /* Desktop Layout: 3-column grid */
             display: grid;
             grid-template-columns: minmax(200px, 1.5fr) 2fr auto;
             align-items: center;
             gap: 20px;
             transition: background-color 0.3s; /* 更新过渡以适应背景色变化 */
         }
-
         /* === 修改开始：优化禁用凭证的显示效果 === */
-        /*
-         * 问题：旧的 `opacity: 0.5` 样式会使整个禁用的凭证卡片（包括文字和按钮）变暗，
-         * 导致信息难以阅读，并且操作按钮（如“启用”）看起来像是被禁用的。
-         *
-         * 解决方案：
-         * 1. 移除对整个 `.file-item.disabled` 设置全局透明度的规则。
-         * 2. 通过稍微调暗背景色来提供视觉区分。
-         * 3. 只对信息和统计部分（.file-info, .usage-stats）应用较低的透明度，
-         *    表示这部分内容处于“非活动”状态，但仍保持可读。
-         * 4. 操作按钮区域（.file-actions）不受透明度影响，因此按钮会以其原始颜色显示，
-         *    明确表示它们是可点击和交互的。
-         */
         .file-item.disabled {
-            /* 移除旧的 opacity: 0.5; */
             background-color: #33373c; /* 比正常的 --bg-tertiary (#3a3f44) 稍暗，作为禁用提示 */
         }
-
         /* 仅将信息和统计部分变暗，而不是整个卡片 */
         .file-item.disabled .file-info,
         .file-item.disabled .usage-stats {
             opacity: 0.6;
         }
-        /* .file-actions 区域及其中的按钮将保持完全不透明，因为父级不再有 opacity 限制 */
         /* === 修改结束 === */
-        
         .file-info { word-break: break-all; }
         .file-name {
             font-family: var(--font-family-mono);
@@ -372,7 +356,6 @@
             color: var(--text-muted);
             margin-top: 2px;
         }
-        
         /* 错误码显示样式 */
         .error-codes {
             margin-top: 8px;
@@ -539,27 +522,107 @@
             90% { opacity: 1; transform: translateY(0); }
             100% { opacity: 0; transform: translateY(-10px); }
         }
-        /* 修正：由于用户要求不用translate，这里提供一个不使用transform的备用动画 */
-        @keyframes simple-fade {
-            0% { opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { opacity: 0; }
-        }
-        /* 如果要使用无transform的版本，请将上面.toast的animation改为: animation: simple-fade 4s ease-in-out forwards; */
-        /* 当前版本保留了轻微的translateY，因为它能提供更好的视觉反馈且性能良好，如果严格禁止，请使用simple-fade */
         /* === 新增：移除数字输入框的箭头按钮 === */
-
         /* 针对 WebKit 浏览器 (Chrome, Safari, Edge, Opera) */
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { 
         -webkit-appearance: none; 
         margin: 0; 
         }
-
         /* 针对 Firefox 浏览器 */
         input[type=number] {
         -moz-appearance: textfield;
+        }
+
+        /* 
+         * =============================================
+         * 13. 响应式设计 (移动端优化)
+         * =============================================
+         */
+        @media (max-width: 768px) {
+            /* 通用布局与间距 */
+            body {
+                padding: 10px;
+            }
+            .container {
+                padding: 15px;
+            }
+            h1 {
+                font-size: 24px; /* 在手机上适当缩小标题 */
+            }
+
+            /* 头部: 垂直堆叠标题和用户信息 */
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+            .user-info {
+                width: 100%;
+                justify-content: space-between; /* 让退出按钮靠右 */
+            }
+
+            /* 标签页: 启用水平滚动 */
+            .tabs {
+                overflow-x: auto;
+                white-space: nowrap;
+                -webkit-overflow-scrolling: touch; /* 在iOS上实现平滑滚动 */
+                scrollbar-width: none; /* 为 Firefox 隐藏滚动条 */
+            }
+            .tabs::-webkit-scrollbar {
+                display: none; /* 为 Chrome, Safari, Opera 隐藏滚动条 */
+            }
+            .tab {
+                padding: 12px 16px; /* 减少标签的水平内边距 */
+                flex-shrink: 0; /* 防止标签在flex容器中被压缩 */
+            }
+
+            /* 凭证项: 从网格改为垂直堆叠布局 */
+            .file-item {
+                display: flex;
+                flex-direction: column;
+                align-items: stretch; /* 让子项宽度撑满容器 */
+                gap: 15px;
+                padding: 15px;
+            }
+            .file-actions-container {
+                align-items: flex-start; /* 将操作按钮组靠左对齐 */
+                width: 100%;
+            }
+            .file-actions {
+                flex-wrap: wrap; /* 允许按钮在空间不足时换行 */
+                justify-content: flex-start;
+            }
+            
+            /* 统计概览卡片 */
+            .stats-overview {
+                gap: 10px;
+            }
+            .stat-card {
+                min-width: 100px; /* 允许卡片更窄一些 */
+                padding: 15px;
+            }
+
+            /* 弹窗: 调整以适应小屏幕 */
+            .usage-modal-content {
+                width: 90vw; /* 使用视口宽度单位 */
+                margin: 10vh auto; /* 减少顶部外边距，使其更靠近顶部 */
+                padding: 20px;
+            }
+
+            /* 文件上传区域 */
+            .upload-area {
+                padding: 25px;
+            }
+
+            /* 主要操作按钮 */
+            .btn {
+                padding: 12px 20px;
+            }
+            #uploadBtn {
+                width: 100%; /* 让上传按钮变为全宽，更易点击 */
+                margin-right: 0;
+            }
         }
     </style>
 </head>
@@ -676,12 +739,10 @@
     <script>
         // JavaScript部分保持不变，因为CSS的类名和ID都没有改变，功能可以无缝衔接。
         let selectedFiles = [];
-        
         // 添加全局请求拦截器，处理401未授权响应
         const originalFetch = window.fetch;
         window.fetch = async function(url, options = {}) {
             const response = await originalFetch(url, options);
-            
             // 如果响应状态码是401（未授权/会话过期），自动重定向到登录页面
             if (response.status === 401) {
                 console.log('会话已过期，正在重定向到登录页面...');
@@ -693,7 +754,6 @@
             }
             return response;
         };
-        
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', function() {
             checkAuthAndLoadProfile();
@@ -747,35 +807,28 @@
             const sessionId = getCookie('user_session');
             const listContainer = document.getElementById('integratedCredentialsList');
             listContainer.innerHTML = '<div class="loading">加载数据中...</div>';
-
             try {
                 // 1. 调用新的、统一的 API 端点
                 const response = await fetch('/user/dashboard-data', {
                     credentials: 'include' // 使用包含Cookie的认证方式
                 });
-
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.detail || '加载数据失败');
                 }
-                
                 const data = await response.json();
-
                 // 2. 更新统计概览
                 const summary = data.summary || {};
                 document.getElementById('totalApiCalls').textContent = summary.total_calls || 0;
                 document.getElementById('geminiProCalls').textContent = summary.gemini_25_pro_calls || 0;
                 document.getElementById('totalFiles').textContent = data.credentials ? data.credentials.length : 0;
-
                 // 3. 显示凭证列表
                 displayCredentials(data.credentials || []);
-
             } catch (error) {
                 listContainer.innerHTML = `<p style="text-align:center; color: var(--color-danger);">${error.message}</p>`;
                 showStatus(error.message, 'error');
             }
         }
-
         function formatLastUsedTime(isoString) {
             if (!isoString) {
                 return '从未使用';
@@ -804,7 +857,6 @@
                 container.innerHTML = '<p style="text-align:center; color: var(--text-muted);">您还没有上传任何凭证文件。</p>';
                 return;
             }
-
             // 新的 API 直接在每个凭证对象中包含了所有信息，不再需要全局变量
             container.innerHTML = credentials.map(cred => {
                 // 直接从 cred 对象获取统计数据
@@ -812,10 +864,8 @@
                 const totalCalls = cred.total_calls || 0;
                 const geminiLimit = cred.daily_limit_gemini_25_pro || 100;
                 const totalLimit = cred.daily_limit_total || 1500;
-
                 const geminiPercent = geminiLimit > 0 ? Math.min((geminiCalls / geminiLimit) * 100, 100) : 0;
                 const totalPercent = totalLimit > 0 ? Math.min((totalCalls / totalLimit) * 100, 100) : 0;
-
                 function getProgressClass(percent) {
                     if (percent >= 90) return 'danger';
                     if (percent >= 70) return 'warning';
@@ -831,7 +881,6 @@
                     // 直接复用已有的formatLastUsedTime函数
                     return formatLastUsedTime(isoString);
                 }
-                
                 // 格式化错误码显示
                 function formatErrorCodes(errorCodes) {
                     if (!errorCodes || errorCodes.length === 0) {
@@ -853,7 +902,6 @@
                     </div>
                     `;
                 }
-
                 // 使用从新 API 获取的字段，如 is_active, name, last_success_at
                 return `
                 <div class="file-item ${cred.is_active ? '' : 'disabled'}">
@@ -906,7 +954,6 @@
                 `;
             }).join('');
         }
-
         // 注意：loadApiKey函数已被移除，相关功能已整合到checkAuthAndLoadProfile函数中
         // 显示API密钥
         function displayApiKey(apiKey) {
@@ -973,17 +1020,14 @@
         // 处理选择的文件
         function handleFiles(files) {
             const newFiles = Array.from(files).filter(file => file.type === 'application/json' || file.name.endsWith('.json'));
-            
             // 获取当前凭证数量
             const credentialItems = document.querySelectorAll('#integratedCredentialsList .file-item');
             const currentCredCount = credentialItems.length;
-            
             // 检查总数限制
             if (currentCredCount + selectedFiles.length + newFiles.length > 10) {
                 showStatus(`上传失败：凭证总数不能超过10个（当前${currentCredCount}个，已选${selectedFiles.length}个，新选${newFiles.length}个）`, 'error');
                 return;
             }
-            
             // 检查文件大小限制 (2KB)
             newFiles.forEach(newFile => {
                 const fileExists = selectedFiles.some(existingFile => existingFile.name === newFile.name);
@@ -992,12 +1036,10 @@
                     showStatus(`文件 "${newFile.name}" 超过2KB限制，无法上传`, 'error');
                     return;
                 }
-                
                 if (!fileExists) {
                     selectedFiles.push(newFile);
                 }
             });
-            
             const fileList = document.getElementById('uploadFileList');
             // === 改进点: 更新此处的 class 名称 ===
             fileList.innerHTML = selectedFiles.map(file => `
@@ -1021,26 +1063,22 @@
         // 上传文件
         async function uploadFiles() {
             if (selectedFiles.length === 0) return;
-            
             // 检查当前凭证总数
             const sessionId = getCookie('user_session');
             try {
                 // 使用前端已有的凭证列表数据
                 const credentialItems = document.querySelectorAll('#integratedCredentialsList .credential-item');
                 const currentCredCount = credentialItems.length;
-                
                 // 检查总数限制
                 if (currentCredCount + selectedFiles.length > 10) {
                     showStatus(`上传失败：凭证总数不能超过10个（当前${currentCredCount}个，选择${selectedFiles.length}个）`, 'error');
                     return;
                 }
-                
                 // 继续上传流程
                 const formData = new FormData();
                 selectedFiles.forEach(file => {
                     formData.append('files', file);
                 });
-                
                 const response = await fetch('/user/credentials/upload', {
                     method: 'POST',
                     headers: {
@@ -1048,7 +1086,6 @@
                     },
                     body: formData
                 });
-                
                 if (response.ok) {
                     showStatus('文件上传成功', 'success');
                     selectedFiles = [];
