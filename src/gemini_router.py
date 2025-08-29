@@ -43,7 +43,7 @@ async def get_user_credential_manager(username: str):
 @asynccontextmanager
 async def get_credential_manager():
     """获取管理员凭证管理器实例"""
-    admin_cred_mgr = UserCredentialManager()
+    admin_cred_mgr = UserCredentialManager(username="admin")
     await admin_cred_mgr.initialize()
     try:
         yield admin_cred_mgr
