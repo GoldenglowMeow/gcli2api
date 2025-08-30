@@ -22,18 +22,92 @@ from .utils import get_user_agent, get_client_metadata
 from log import logger
 
 class UserCredentialManager:
-    """基于SQLite数据库的用户凭证管理器，支持用户隔离"""
-
-    def __init__(self, username: str, calls_per_rotation: int = None):
+    """基于SQLite数据库的用户凭证管理器，支持用户隔离，使用单例模式确保每个用户只有一个实例"""
+    
+    # 类级别的实例字典，用于存储每个用户名对应的实例
+    _instances = {}
+    # 类级别的锁，用于保护实例字典的并发访问
+    _instances_lock = asyncio.Lock()
+    # 记录每个实例的最后访问时间
+    _last_access_times = {}
+    # 清理任务
+    _cleanup_task = None
+    # 实例超时时间（秒），1小时不使用则清理
+    _INSTANCE_TIMEOUT = 3600
+    
+    @classmethod
+    async def get_instance(cls, username: str, calls_per_rotation: int = None) -> 'UserCredentialManager':
+        """
+        获取用户的凭证管理器实例，如果不存在则创建
+        Args:
+            username: 用户名
+            calls_per_rotation: 每次轮换的调用次数
+        Returns:
+            UserCredentialManager: 用户的凭证管理器实例
+        """
+        # 启动清理任务（如果尚未启动）
+        if cls._cleanup_task is None or cls._cleanup_task.done():
+            cls._cleanup_task = asyncio.create_task(cls._cleanup_inactive_instances())
+            
+        if not username:
+            raise ValueError("UserCredentialManager必须使用用户名进行初始化。")
+            
+        async with cls._instances_lock:
+            if username not in cls._instances:
+                logger.info(f"为用户 '{username}' 创建新的凭证管理器实例")
+                instance = cls._create_instance(username, calls_per_rotation)
+                cls._instances[username] = instance
+            
+            # 更新最后访问时间
+            cls._last_access_times[username] = time.time()
+            return cls._instances[username]
+    
+    @classmethod
+    def _create_instance(cls, username: str, calls_per_rotation: int = None) -> 'UserCredentialManager':
+        """创建新实例但不初始化（初始化将在第一次使用时异步进行）"""
+        return cls(username, calls_per_rotation, _private_init=True)
+        
+    @classmethod
+    async def _cleanup_inactive_instances(cls):
+        """定期清理长时间不活跃的实例"""
+        try:
+            while True:
+                await asyncio.sleep(300)  # 每5分钟检查一次
+                current_time = time.time()
+                usernames_to_remove = []
+                
+                async with cls._instances_lock:
+                    for username, last_access_time in cls._last_access_times.items():
+                        if current_time - last_access_time > cls._INSTANCE_TIMEOUT:
+                            usernames_to_remove.append(username)
+                    
+                    for username in usernames_to_remove:
+                        if username in cls._instances:
+                            logger.info(f"清理长时间不活跃的凭证管理器实例: {username}")
+                            try:
+                                await cls._instances[username].close()
+                            except Exception as e:
+                                logger.warning(f"关闭用户 {username} 的凭证管理器时出错: {e}")
+                            del cls._instances[username]
+                            del cls._last_access_times[username]
+        except asyncio.CancelledError:
+            logger.info("凭证管理器清理任务被取消")
+        except Exception as e:
+            logger.error(f"凭证管理器清理任务出错: {e}")
+            # 重新启动清理任务
+            cls._cleanup_task = asyncio.create_task(cls._cleanup_inactive_instances())
+    
+    def __init__(self, username: str, calls_per_rotation: int = None, _private_init: bool = False):
         """
         初始化用户凭证管理器
         Args:
             username: 用户名
             calls_per_rotation: 每次轮换的调用次数
+            _private_init: 私有参数，防止直接实例化，应该使用get_instance方法
         """
-        if not username:
-            raise ValueError("UserCredentialManager必须使用用户名进行初始化。")
-
+        if not _private_init:
+            logger.warning(f"警告：直接实例化UserCredentialManager已弃用，请使用UserCredentialManager.get_instance()方法")
+            
         self._lock = asyncio.Lock()
         self.username = username
         self.user_id: Optional[int] = None
@@ -57,6 +131,9 @@ class UserCredentialManager:
         # HTTP客户端
         self._http_client: Optional[httpx.AsyncClient] = None
         self._initialized = False
+        
+        # 新增一个集合来跟踪正在刷新的凭证ID，防止竞态条件
+        self._refreshing_in_progress = set()
 
     async def initialize(self):
         """初始化凭证管理器"""
@@ -146,96 +223,129 @@ class UserCredentialManager:
         return True
 
     async def get_credentials(self) -> Tuple[Optional[Credentials], Optional[str]]:
-        """获取当前凭证，如果过期则刷新"""
+        """获取当前凭证，如果过期则刷新（最终修复版）"""
         if not self._initialized:
             await self.initialize()
-
-        async with self._lock:
-            # 如果缓存有效，直接返回缓存的凭证
-            if self._is_cache_valid():
-                logger.debug(f"使用缓存的凭证 (调用计数: {self._call_count}/{self._calls_per_rotation})")
-                self._call_count += 1  # 增加调用计数
-                return self._cached_credentials_obj, self._current_credential_record.get('project_id')
-
-            # 如果需要，从数据库刷新凭证缓存
-            if not self._credentials_cache or time.time() - self._last_cache_refresh_time > 600:
-                await self._load_credentials_from_db()
-
-            if not self._credentials_cache:
-                logger.error(f"用户 '{self.username}' 没有可用的凭证。")
-                return None, None
-
-            # 如果达到轮换阈值，切换到下一个凭证
-            if self._call_count >= self._calls_per_rotation:
-                self._current_credential_index = (self._current_credential_index + 1) % len(self._credentials_cache)
-                self._call_count = 0
-                logger.info(f"轮换到凭证索引 {self._current_credential_index}")
-                # 清除缓存的凭证对象，强制重新加载
-                self._cached_credentials_obj = None
-
-            # 获取当前凭证记录
-            self._current_credential_record = self._credentials_cache[self._current_credential_index]
-            cred_record = self._current_credential_record
-            cred_id = cred_record['id']
-            cred_name = cred_record['name']
-            logger.info(f"尝试加载凭证: {cred_name} (ID: {cred_id}, 索引: {self._current_credential_index})")
-
-        try:
-            creds_data = json.loads(cred_record['credential_data'])
-            creds = self._create_credentials_obj(creds_data)
+        
+        # 记录已尝试过的凭证ID，确保每个凭证只尝试一次
+        tried_credential_ids = set()
+        
+        # 继续尝试直到所有凭证都尝试过或成功获取凭证
+        while True:
+            cred_record = None
+            is_already_refreshing = False
             
-            if creds.expired and creds.refresh_token:
-                logger.info(f"凭证 '{cred_name}' 已过期，正在刷新...")
-                # 创建一个同步的请求对象，而不是使用异步客户端
-                # 这里使用标准的 google.auth.transport.requests.Request 而不是传入异步客户端
-                request = GoogleAuthRequest()
-                await asyncio.to_thread(creds.refresh, request)
-                logger.info(f"凭证 '{cred_name}' 刷新成功。")
+            # --- 阶段1: 在锁内做快速决策 ---
+            async with self._lock:
+                if self._is_cache_valid():
+                    self._call_count += 1
+                    logger.debug(f"使用缓存的凭证 (调用计数: {self._call_count}/{self._calls_per_rotation})")
+                    return self._cached_credentials_obj, self._current_credential_record.get('project_id')
                 
-                # 更新凭证缓存，避免重复刷新
-                self._cached_credentials_obj = creds
-                self._call_count = 0  # 重置调用计数
-                self._last_refresh_time = time.time()  # 记录最后刷新时间
+                # 准备轮换或刷新
+                if not self._credentials_cache or time.time() - self._last_cache_refresh_time > 600:
+                    await self._load_credentials_from_db()
+
+                if not self._credentials_cache:
+                    logger.error(f"用户 '{self.username}' 没有可用的凭证。")
+                    return None, None
+
+                # 检查是否已尝试过所有凭证
+                if len(tried_credential_ids) >= len(self._credentials_cache):
+                    logger.error(f"已尝试所有 {len(self._credentials_cache)} 个凭证，均无法使用。")
+                    return None, None
+
+                if self._call_count >= self._calls_per_rotation:
+                    self._current_credential_index = (self._current_credential_index + 1) % len(self._credentials_cache)
+                    self._call_count = 0
+                    self._cached_credentials_obj = None
+                    logger.info(f"轮换到凭证索引 {self._current_credential_index}")
                 
-                # 更新数据库中的凭证数据
-                cred_info = {
-                    'token': creds.token,
-                    'refresh_token': creds.refresh_token,
-                    'token_uri': creds.token_uri,
-                    'client_id': creds.client_id,
-                    'client_secret': creds.client_secret,
-                    'scopes': creds.scopes,
-                    'expiry': creds.expiry.isoformat() if creds.expiry else None
-                }
-                await user_db.update_credential(cred_id, {'credential_data': json.dumps(cred_info)})
+                # 获取当前凭证，如果已尝试过则继续轮换
+                initial_index = self._current_credential_index
+                while True:
+                    cred_record = self._credentials_cache[self._current_credential_index]
+                    cred_id = cred_record['id']
+                    
+                    # 如果这个凭证已经尝试过，轮换到下一个
+                    if cred_id in tried_credential_ids:
+                        self._current_credential_index = (self._current_credential_index + 1) % len(self._credentials_cache)
+                        # 如果已经循环回到起始索引，说明所有凭证都尝试过了
+                        if self._current_credential_index == initial_index:
+                            logger.error(f"已尝试所有 {len(self._credentials_cache)} 个凭证，均无法使用。")
+                            return None, None
+                        continue
+                    else:
+                        # 找到一个未尝试过的凭证
+                        break
+                
+                self._current_credential_record = cred_record
+                cred_id = cred_record['id']
+                tried_credential_ids.add(cred_id)  # 标记为已尝试
+                
+                # 关键修复：正确判断是否已有任务在刷新
+                if cred_id in self._refreshing_in_progress:
+                    is_already_refreshing = True
+                    logger.debug(f"凭证 '{cred_record['name']}' (ID: {cred_id}) 正在刷新，本任务将等待。")
+                else:
+                    self._refreshing_in_progress.add(cred_id)
+                    logger.info(f"决定刷新凭证: {cred_record['name']} (ID: {cred_id}, 索引: {self._current_credential_index})")
             
-            project_id = cred_record.get('project_id') or creds_data.get('project_id')
-
-        except Exception as e:
-            logger.error(f"加载或刷新凭证 '{cred_name}' (ID: {cred_id}) 失败: {e}")
-            await self.record_error(500, f"Credential load failed: {e}")
-            await self._force_rotate_credential()
-            # 防止无限递归，如果没有更多凭证可用，直接返回 None
-            if len(self._credentials_cache) <= 1:
-                logger.error(f"没有更多可用凭证，无法继续尝试")
-                return None, None
-            # 设置最大重试次数，避免无限递归
-            if not hasattr(self, '_retry_count'):
-                self._retry_count = 0
-            self._retry_count += 1
-            if self._retry_count > 3:
-                logger.error(f"尝试获取凭证失败次数过多，放弃尝试")
-                self._retry_count = 0
-                return None, None
-            # 尝试获取下一个凭证
-            result = await self.get_credentials()
-            self._retry_count = 0
-            return result
-
-        async with self._lock:
-            self._cached_credentials_obj = creds
-            await user_db.update_credential(cred_id, {'last_used_at': datetime.now(timezone.utc).isoformat()})
-            return creds, project_id
+            # --- 锁已释放 ---
+            # --- 阶段2: 根据决策执行操作 ---
+            if is_already_refreshing:
+                await asyncio.sleep(1)  # 等待1秒让其他任务完成刷新
+                continue  # 进入下一次循环重试
+            
+            # --- 如果我们是负责刷新的任务，则执行网络操作 ---
+            try:
+                creds_data = json.loads(cred_record['credential_data'])
+                creds = self._create_credentials_obj(creds_data)
+                
+                if creds.expired and creds.refresh_token:
+                    logger.info(f"凭证 '{cred_record['name']}' 正在执行网络刷新...")
+                    request = GoogleAuthRequest()
+                    await asyncio.to_thread(creds.refresh, request)
+                    logger.info(f"凭证 '{cred_record['name']}' 刷新成功。")
+                    
+                    # 更新数据库
+                    cred_info = {
+                        'token': creds.token,
+                        'refresh_token': creds.refresh_token,
+                        'expiry': creds.expiry.isoformat() if creds.expiry else None,
+                        'token_uri': creds.token_uri,
+                        'client_id': creds.client_id,
+                        'client_secret': creds.client_secret,
+                        'scopes': creds.scopes
+                    }
+                    await user_db.update_credential(cred_id, {'credential_data': json.dumps(cred_info)})
+                
+                project_id = cred_record.get('project_id') or creds_data.get('project_id')
+                
+                # --- 阶段3: 在锁内更新共享状态 ---
+                async with self._lock:
+                    self._cached_credentials_obj = creds
+                    self._call_count = 0
+                    self._last_refresh_time = time.time()
+                    await user_db.update_credential(cred_id, {'last_used_at': datetime.now(timezone.utc).isoformat()})
+                    return creds, project_id
+                    
+            except Exception as e:
+                logger.error(f"加载或刷新凭证 '{cred_record['name']}' (ID: {cred_id}) 失败: {e}")
+                await self.record_error(500, f"Credential load/refresh failed: {e}")
+                
+                # 强制轮换到下一个凭证
+                await self._force_rotate_credential()
+                
+                # 继续循环尝试下一个凭证
+            finally:
+                # 关键修复：使用finally确保无论成功、失败或异常，都清理刷新标记
+                async with self._lock:
+                    self._refreshing_in_progress.discard(cred_id)
+        
+        # 理论上不会执行到这里，因为循环中会处理所有情况
+        logger.error("尝试获取凭证失败，所有凭证均无法使用。")
+        return None, None
 
     def _create_credentials_obj(self, creds_data: Dict[str, Any]) -> Credentials:
         """从字典创建 google.oauth2.credentials.Credentials 对象"""
@@ -274,7 +384,11 @@ class UserCredentialManager:
             old_index = self._current_credential_index
             self._current_credential_index = (self._current_credential_index + 1) % len(self._credentials_cache)
             self._call_count = 0
-            self._cached_credentials_obj = None
+            
+            # 不再清除缓存的凭证对象，避免重复刷新
+            # 只有在需要时才会重新加载凭证
+            # self._cached_credentials_obj = None
+            
             logger.info(f"强制从凭证索引 {old_index} 轮换到 {self._current_credential_index}")
 
     async def force_refresh_credential_cache(self):

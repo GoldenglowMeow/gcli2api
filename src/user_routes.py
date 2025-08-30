@@ -147,7 +147,7 @@ async def validate_api_key(user: dict = Depends(get_user_by_api_key_dependency))
 @router.post("/user/credentials/upload")
 async def upload_user_credentials(files: List[UploadFile] = File(...), current_user: dict = Depends(get_current_user)):
     """上传用户凭证文件"""
-    cred_mgr = UserCredentialManager(current_user["username"])
+    cred_mgr = await UserCredentialManager.get_instance(current_user["username"])
     await cred_mgr.initialize()
     
     try:
@@ -195,7 +195,7 @@ async def credential_action(request: CredentialActionRequest, current_user = Dep
     # 确保current_user不是协程对象
     if hasattr(current_user, "__await__"):
         current_user = await current_user
-    cred_mgr = UserCredentialManager(current_user["username"])
+    cred_mgr = await UserCredentialManager.get_instance(current_user["username"])
     await cred_mgr.initialize()
     
     try:
@@ -221,7 +221,7 @@ async def credential_action(request: CredentialActionRequest, current_user = Dep
 @router.get("/user/credentials/{cred_name}/content")
 async def get_credential_content(cred_name: str, current_user: dict = Depends(get_current_user)):
     """获取凭证文件内容（隐藏敏感信息）"""
-    cred_mgr = UserCredentialManager(current_user["username"])
+    cred_mgr = await UserCredentialManager.get_instance(current_user["username"])
     await cred_mgr.initialize()
     
     try:
@@ -255,7 +255,7 @@ async def get_user_dashboard_data(current_user = Depends(get_current_user)):
         logger.info(f"解析后的current_user: {current_user}")
     
     logger.info(f"用户名: {current_user.get('username', '未知')}")
-    cred_mgr = UserCredentialManager(current_user["username"])
+    cred_mgr = await UserCredentialManager.get_instance(current_user["username"])
     try:
         logger.info("初始化凭证管理器")
         await cred_mgr.initialize()
@@ -332,7 +332,7 @@ async def update_user_limits(request: UserLimitsUpdateRequest, current_user = De
     # 确保current_user不是协程对象
     if hasattr(current_user, "__await__"):
         current_user = await current_user
-    cred_mgr = UserCredentialManager(current_user["username"])
+    cred_mgr = await UserCredentialManager.get_instance(current_user["username"])
     await cred_mgr.initialize()
 
     try:

@@ -27,30 +27,17 @@ user_credential_managers = {}
 
 @asynccontextmanager
 async def get_user_credential_manager(username: str):
-    """获取用户特定的凭证管理器实例（带缓存）"""
-    global user_credential_managers
-
-    if username not in user_credential_managers:
-        logger.debug(f"创建新的用户凭证管理器实例: {username}")
-        user_cred_mgr = UserCredentialManager(username)
-        await user_cred_mgr.initialize()
-        user_credential_managers[username] = user_cred_mgr
-    else:
-        logger.debug(f"复用现有的用户凭证管理器实例: {username}")
-
-    yield user_credential_managers[username]
+    """获取用户特定的凭证管理器实例（使用单例模式）"""
+    # 使用UserCredentialManager的单例模式
+    user_cred_mgr = await UserCredentialManager.get_instance(username)
+    await user_cred_mgr.initialize()
+    yield user_cred_mgr
 
 
 async def cleanup_user_credential_managers():
-    """清理用户凭证管理器实例缓存"""
-    global user_credential_managers
-    for username, manager in user_credential_managers.items():
-        try:
-            await manager.close()
-        except Exception as e:
-            logger.warning(f"关闭用户 {username} 的凭证管理器时出错: {e}")
-    user_credential_managers.clear()
-    logger.info("已清理所有用户凭证管理器实例缓存")
+    """清理用户凭证管理器实例缓存 - 保留但不再需要，因为使用了单例模式"""
+    # 单例模式下不再需要手动清理，但保留此函数以兼容现有代码
+    logger.info("使用单例模式，不需要手动清理凭证管理器实例")
 
 
 

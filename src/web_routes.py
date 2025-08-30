@@ -190,7 +190,7 @@ async def admin_user_credential_action(request: UserCredActionRequest, token: st
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    cred_mgr = UserCredentialManager(request.username)
+    cred_mgr = await UserCredentialManager.get_instance(request.username)
     await cred_mgr.initialize()
 
     try:
