@@ -187,7 +187,8 @@ async def upload_user_credentials(files: List[UploadFile] = File(...), current_u
 
         return {"success": True, "results": results}
     finally:
-        await cred_mgr.close()
+        # 单例模式下不应手动关闭，由清理任务管理生命周期
+        pass
 
 @router.post("/user/credentials/action")
 async def credential_action(request: CredentialActionRequest, current_user = Depends(get_current_user)):
@@ -216,7 +217,8 @@ async def credential_action(request: CredentialActionRequest, current_user = Dep
         else:
             raise HTTPException(status_code=404, detail="操作失败，凭证未找到或发生错误")
     finally:
-        await cred_mgr.close()
+        # 单例模式下不应手动关闭，由清理任务管理生命周期
+        pass
 
 @router.get("/user/credentials/{cred_name}/content")
 async def get_credential_content(cred_name: str, current_user: dict = Depends(get_current_user)):
@@ -239,7 +241,8 @@ async def get_credential_content(cred_name: str, current_user: dict = Depends(ge
         
         return {"success": True, "content": content}
     finally:
-        await cred_mgr.close()
+        # 单例模式下不应手动关闭，由清理任务管理生命周期
+        pass
 
 @router.get("/user/dashboard-data")
 async def get_user_dashboard_data(current_user = Depends(get_current_user)):
@@ -322,9 +325,8 @@ async def get_user_dashboard_data(current_user = Depends(get_current_user)):
         logger.error(f"错误堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"获取仪表盘数据时出错: {str(e)}")
     finally:
-        # 确保数据库连接总是被关闭
-        logger.info("关闭凭证管理器")
-        await cred_mgr.close()
+        # 单例模式下不应手动关闭，由清理任务管理生命周期
+        pass
 
 @router.post("/user/usage/update-limits")
 async def update_user_limits(request: UserLimitsUpdateRequest, current_user = Depends(get_current_user)):
@@ -357,4 +359,5 @@ async def update_user_limits(request: UserLimitsUpdateRequest, current_user = De
         else:
             raise HTTPException(status_code=500, detail="更新数据库时发生错误")
     finally:
-        await cred_mgr.close()
+        # 单例模式下不应手动关闭，由清理任务管理生命周期
+        pass

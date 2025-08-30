@@ -211,7 +211,8 @@ async def admin_user_credential_action(request: UserCredActionRequest, token: st
         else:
             raise HTTPException(status_code=404, detail="操作失败，凭证未找到或发生错误")
     finally:
-        await cred_mgr.close()
+        # 单例模式下不应手动关闭，由清理任务管理生命周期
+        pass
 
 # --- 配置管理 ---
 @router.get("/config/get")

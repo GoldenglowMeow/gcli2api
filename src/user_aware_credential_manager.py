@@ -51,15 +51,28 @@ class UserCredentialManager:
             
         if not username:
             raise ValueError("UserCredentialManager必须使用用户名进行初始化。")
+        
+        # 首先检查实例是否已存在，避免不必要的锁竞争
+        if username in cls._instances:
+            # 更新最后访问时间（这里不需要锁，因为只是更新时间戳）
+            cls._last_access_times[username] = time.time()
+            logger.debug(f"使用现有的凭证管理器实例: {username}")
+            return cls._instances[username]
             
+        # 如果实例不存在，则获取锁并创建
         async with cls._instances_lock:
+            # 双重检查，防止在等待锁期间其他线程已创建实例
             if username not in cls._instances:
                 logger.info(f"为用户 '{username}' 创建新的凭证管理器实例")
                 instance = cls._create_instance(username, calls_per_rotation)
                 cls._instances[username] = instance
-            
-            # 更新最后访问时间
-            cls._last_access_times[username] = time.time()
+                # 初始化最后访问时间
+                cls._last_access_times[username] = time.time()
+            else:
+                logger.debug(f"在锁内检测到已存在的凭证管理器实例: {username}")
+                # 更新最后访问时间
+                cls._last_access_times[username] = time.time()
+                
             return cls._instances[username]
     
     @classmethod
@@ -173,7 +186,12 @@ class UserCredentialManager:
             logger.info(f"用户 '{self.username}' 的凭证管理器初始化完成。")
 
     async def close(self):
-        """清理资源"""
+        """
+        清理资源
+        
+        警告: 在单例模式下，不应直接调用此方法。
+        此方法仅供内部清理任务使用，手动调用会破坏单例状态。
+        """
         if self._http_client:
             await self._http_client.aclose()
             self._http_client = None
@@ -383,11 +401,11 @@ class UserCredentialManager:
             
             old_index = self._current_credential_index
             self._current_credential_index = (self._current_credential_index + 1) % len(self._credentials_cache)
+
+            # 核心修复：重置调用计数器和缓存的凭证对象
+            # 这可以阻止 get_credentials 的主循环再次执行轮换
             self._call_count = 0
-            
-            # 不再清除缓存的凭证对象，避免重复刷新
-            # 只有在需要时才会重新加载凭证
-            # self._cached_credentials_obj = None
+            self._cached_credentials_obj = None
             
             logger.info(f"强制从凭证索引 {old_index} 轮换到 {self._current_credential_index}")
 
