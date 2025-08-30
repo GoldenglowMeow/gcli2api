@@ -17,6 +17,10 @@ class BotUserRegisterRequest(BaseModel):
     password: str
     discord_id: Optional[str] = None
     
+class BotChangePasswordRequest(BaseModel):
+    username: str
+    new_password: str
+    
 # --- 认证依赖 ---
 async def verify_bot_api_key(x_bot_api_key: str = Header(None)):
     """验证Bot API Key"""
@@ -68,3 +72,34 @@ async def bot_register_user(
     except Exception as e:
         log.error(f"Bot API注册用户失败: {str(e)}")
         return {"success": False, "message": f"注册失败: {str(e)}"}
+        
+@router.post("/bot/change_password", tags=["Bot API"])
+async def bot_change_password(
+    request: BotChangePasswordRequest,
+    _: bool = Depends(verify_bot_api_key)
+):
+    """Bot专用修改用户密码API"""
+    try:
+        # 检查用户是否存在
+        user = await user_db.get_user_by_username(request.username)
+        if not user:
+            return {"success": False, "message": "用户不存在"}
+        
+        # 验证新密码长度
+        if len(request.new_password) < 6:
+            return {"success": False, "message": "密码长度至少6位"}
+        
+        # 更新密码
+        result = await user_db.update_user_password(user["id"], request.new_password)
+        
+        if not result.get("success"):
+            return {"success": False, "message": result.get("error", "修改密码失败")}
+        
+        log.info(f"Bot API成功修改用户密码: {request.username}")
+        return {
+            "success": True,
+            "message": "密码修改成功"
+        }
+    except Exception as e:
+        log.error(f"Bot API修改密码失败: {str(e)}")
+        return {"success": False, "message": f"修改密码失败: {str(e)}"}

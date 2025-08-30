@@ -400,6 +400,42 @@ class UserDatabase:
         except Exception as e:
             log.error(f"通过ID获取用户信息失败: {e}")
             return None
+            
+    async def update_user_password(self, user_id: int, new_password: str) -> Dict[str, Any]:
+        """更新用户密码
+        
+        Args:
+            user_id: 用户ID
+            new_password: 新密码
+            
+        Returns:
+            Dict: 包含操作结果的字典
+        """
+        try:
+            if len(new_password) < 6:
+                return {"success": False, "error": "密码长度至少6位"}
+                
+            # 检查用户是否存在
+            user = await self.get_user_by_id(user_id)
+            if not user:
+                return {"success": False, "error": "用户不存在"}
+            
+            # 生成新的密码哈希
+            password_hash, salt = self.hash_password(new_password)
+            
+            # 更新数据库中的密码和盐
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "UPDATE users SET password_hash = ?, salt = ? WHERE id = ?",
+                    (password_hash, salt, user_id)
+                )
+                await db.commit()
+                
+            log.info(f"用户ID {user_id} 密码已更新")
+            return {"success": True, "message": "密码已成功更新"}
+        except Exception as e:
+            log.error(f"更新用户密码时出错: {str(e)}")
+            return {"success": False, "error": f"更新密码失败: {str(e)}"}
     
     async def get_all_users(self) -> List[Dict[str, Any]]:
         try:
