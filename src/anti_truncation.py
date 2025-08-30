@@ -297,10 +297,46 @@ class AntiTruncationStreamProcessor:
             if not has_done_marker and self.current_attempt < self.max_attempts:
                 logger.info("Anti-truncation: Non-streaming response needs continuation")
                 self.collected_content += text_content
-                # 递归处理续传
-                return await self._handle_non_streaming_response(
-                    await self.original_request_func(self._build_current_payload())
-                )
+                
+                # 构建续传payload
+                continuation_payload = self._build_current_payload()
+                
+                # 使用同一个请求函数处理续传，但不使用递归以避免栈溢出
+                # 同时避免频繁凭证轮换，使用循环替代递归
+                max_continuation_loops = self.max_attempts - self.current_attempt
+                current_loop = 0
+                
+                while current_loop < max_continuation_loops:
+                    current_loop += 1
+                    continuation_response = await self.original_request_func(continuation_payload)
+                    
+                    if hasattr(continuation_response, 'body'):
+                        cont_content = continuation_response.body.decode() if isinstance(continuation_response.body, bytes) else continuation_response.body
+                    elif hasattr(continuation_response, 'content'):
+                        cont_content = continuation_response.content.decode() if isinstance(continuation_response.content, bytes) else continuation_response.content
+                    else:
+                        cont_content = str(continuation_response)
+                    
+                    try:
+                        cont_data = json.loads(cont_content)
+                        cont_text = self._extract_content_from_response(cont_data)
+                        self.collected_content += cont_text
+                        
+                        # 检查是否包含done标记
+                        if self._check_done_marker_in_text(cont_text):
+                            logger.info(f"Anti-truncation: Found [done] marker in continuation attempt {current_loop}")
+                            # 找到done标记，合并响应并返回
+                            return self._merge_response_with_collected_content(response_data, self.collected_content).encode()
+                        
+                        # 更新续传payload以包含新收集的内容
+                        continuation_payload = self._build_current_payload()
+                    except Exception as e:
+                        logger.error(f"Anti-truncation continuation error: {str(e)}")
+                        break
+                
+                # 如果所有尝试都没有找到done标记，返回合并的内容
+                logger.warning(f"Anti-truncation: No [done] marker found after {current_loop} continuation attempts")
+                return self._merge_response_with_collected_content(response_data, self.collected_content).encode()
             
             return content.encode()
             
@@ -313,6 +349,36 @@ class AntiTruncationStreamProcessor:
                     "code": 500
                 }
             }).encode()
+            
+    def _merge_response_with_collected_content(self, original_response: Dict[str, Any], collected_content: str) -> str:
+        """将收集到的内容合并到原始响应中"""
+        response_copy = original_response.copy()
+        
+        # 处理Gemini格式
+        if "candidates" in response_copy and response_copy["candidates"]:
+            for candidate in response_copy["candidates"]:
+                if "content" in candidate:
+                    parts = candidate["content"].get("parts", [])
+                    # 替换或添加文本部分
+                    text_part_found = False
+                    for part in parts:
+                        if "text" in part:
+                            part["text"] = collected_content
+                            text_part_found = True
+                            break
+                    
+                    if not text_part_found and parts:
+                        parts.append({"text": collected_content})
+                    elif not parts:
+                        candidate["content"]["parts"] = [{"text": collected_content}]
+        
+        # 处理OpenAI格式
+        elif "choices" in response_copy and response_copy["choices"]:
+            for choice in response_copy["choices"]:
+                if "message" in choice:
+                    choice["message"]["content"] = collected_content
+        
+        return json.dumps(response_copy)
     
     def _check_done_marker_in_text(self, text: str) -> bool:
         """检查文本中是否包含done标记（严格检测）"""
