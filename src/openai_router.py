@@ -243,7 +243,7 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
         
         return await convert_streaming_response(gemini_response, model)
     elif use_anti_truncation and not is_streaming:
-        log.warning("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
+        log.info("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
     
     # 发送请求（429重试已在google_api_client中处理）
     is_streaming = getattr(request_data, "stream", False)

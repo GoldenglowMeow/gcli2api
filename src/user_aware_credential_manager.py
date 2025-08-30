@@ -268,7 +268,7 @@ class UserCredentialManager:
         """强制轮换到下一个凭证，通常在发生严重错误后调用"""
         async with self._lock:
             if not self._credentials_cache or len(self._credentials_cache) <= 1:
-                log.warning("只有一个或没有可用凭证，无法强制轮换。")
+                log.info("只有一个或没有可用凭证，无法强制轮换。")
                 return
             
             old_index = self._current_credential_index
@@ -339,13 +339,14 @@ class UserCredentialManager:
                 error_codes.append(status_code)
             
             update_data = {'error_codes': json.dumps(error_codes)}
-            if await user_db.update_credential(cred_id, update_data):
+            update_result = await user_db.update_credential(cred_id, update_data)
+            if update_result:
                 async with self._lock:
                     if self._current_credential_record and self._current_credential_record['id'] == cred_id:
                         self._current_credential_record.update(update_data)
                 log.debug(f"错误 {status_code} 已记录到凭证 '{cred_name}' (ID: {cred_id})。")
             else:
-                log.error(f"记录错误到数据库失败，凭证ID {cred_id}")
+                log.error(f"记录错误到数据库失败，凭证ID {cred_id}，错误代码 {status_code}，响应内容: {response_content[:200] if response_content else 'None'}")
         except Exception as e:
             log.error(f"记录错误时发生异常，凭证ID {cred_id}: {e}")
 

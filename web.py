@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pathlib import Path
 
 # Import all routers
 from src.openai_router import router as openai_router
@@ -93,6 +95,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+FAVICON_PATH = Path("public/favicon.ico")
+
+@app.get("/favicon.ico")
+async def get_favicon():
+    """
+    直接返回 public/favicon.ico 文件。
+    """
+    if FAVICON_PATH.is_file():
+        return FileResponse(FAVICON_PATH)
+    else:
+        # 如果文件不存在，可以返回 404 或者默认的 favicon
+        # 这里返回 404
+        return {"detail": "Favicon not found"}, 404
 
 # 挂载路由器
 # OpenAI兼容路由 - 处理OpenAI格式请求

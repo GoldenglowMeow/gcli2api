@@ -307,9 +307,16 @@ class UserDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(query, tuple(values))
                 await db.commit()
-                return cursor.rowcount > 0
+                if cursor.rowcount > 0:
+                    return True
+                else:
+                    log.warning(f"更新凭证ID {cred_id} 失败: 没有找到匹配的记录或数据未变化，SQL: {query}, 值: {values}")
+                    return False
+        except sqlite3.Error as e:
+            log.error(f"更新凭证ID {cred_id} 失败: 数据库错误 - {e.__class__.__name__}: {e}, SQL: {query}, 值: {values}")
+            return False
         except Exception as e:
-            log.error(f"更新凭证ID {cred_id} 失败: {e}")
+            log.error(f"更新凭证ID {cred_id} 失败: 未知错误 - {e.__class__.__name__}: {e}, SQL: {query}, 值: {values}")
             return False
             
 

@@ -3,7 +3,11 @@
 """
 import sys
 import threading
+import contextvars
 from datetime import datetime
+
+# 当前用户上下文变量
+current_user = contextvars.ContextVar('current_user', default=None)
 
 # 延迟导入配置，避免循环导入
 _config_imported = False
@@ -80,9 +84,13 @@ def _log(level: str, message: str):
     if LOG_LEVELS[level] < current_level:
         return
     
+    # 获取当前用户名
+    username = current_user.get()
+    user_prefix = f"[{username}] " if username else ""
+    
     # 格式化日志消息
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    entry = f"[{timestamp}] [{level.upper()}] {message}"
+    entry = f"[{timestamp}] [{level.upper()}] {user_prefix}{message}"
     
     # 输出到控制台
     if level in ('error', 'critical'):
@@ -103,6 +111,21 @@ def set_log_level(level: str):
     # 这里可以考虑动态更新配置，但目前只提供警告
     print(f"Note: To persist log level '{level}', please set LOG_LEVEL environment variable or update config.toml")
     return True
+
+class UserContext:
+    """用户上下文管理器，用于设置当前用户名"""
+    def __init__(self, username):
+        self.username = username
+        self.token = None
+        
+    def __enter__(self):
+        self.token = current_user.set(self.username)
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.token:
+            current_user.reset(self.token)
+
 
 class Logger:
     """支持 log('info', 'msg') 和 log.info('msg') 两种调用方式"""
@@ -142,6 +165,15 @@ class Logger:
     def get_log_file(self) -> str:
         """获取当前日志文件路径"""
         return _get_log_file_path()
+    
+    def set_user(self, username):
+        """设置当前用户名（返回上下文管理器）"""
+        return UserContext(username)
+    
+    def with_user(self, username, level, message):
+        """使用指定用户名记录日志"""
+        with self.set_user(username):
+            self(level, message)
 
 # 导出全局日志实例
 log = Logger()

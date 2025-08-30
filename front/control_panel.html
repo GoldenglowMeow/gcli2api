@@ -1,527 +1,495 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GCLI2API 控制面板</title>
+    <title>GG公益站-云GCLI控制面板</title>
+    <link rel="icon" href="/favicon.ico">
+    <link rel="shortcut icon" href="/favicon.ico">
     <style>
+        :root {
+            --bg-primary: #1a1d21;
+            --bg-secondary: #2c3035;
+            --bg-tertiary: #3a3f44;
+            --border-color: #5f6770; /* 已调亮 */
+            --text-primary: #e0e0e0;
+            --text-secondary: #b5bcc7; /* 已调亮 */
+            --text-muted: #8a9199; /* 已调亮 */
+            --accent-primary: #007acc;
+            --accent-primary-hover: #0098ff;
+            --color-danger: #c93c37;
+            --color-success: #43a047;
+            --color-warning: #ffc107;
+            --font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --font-family-mono: 'Courier New', Courier, monospace;
+        }
+
+        /* 1. Global & Body */
         body {
-            font-family: Arial, sans-serif;
+            font-family: var(--font-family-sans);
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
-        }
-
-        .container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #555;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
+            background-color: var(--bg-primary);
+            color: var(--text-secondary);
             box-sizing: border-box;
         }
 
-        input[type="text"]:focus {
-            border-color: #4285f4;
-            outline: none;
+        /* 2. Main Container */
+        .container {
+            background-color: var(--bg-secondary);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         }
 
-        .btn {
-            background-color: #4285f4;
-            color: white;
-            padding: 12px 30px;
-            border: none;
-            border-radius: 5px;
+        /* 3. Typography */
+        h1, h3, h4 {
+            color: var(--text-primary);
+            text-align: center;
+            font-weight: 600;
+        }
+        h3 {
+            text-align: left;
+        }
+        p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        a {
+            color: var(--accent-primary);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+            color: var(--accent-primary-hover);
+        }
+        ul {
+            padding-left: 20px;
+        }
+
+        /* 4. Form Elements & Buttons */
+        input[type="text"], input[type="password"], input[type="number"], select.config-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            border-radius: 6px;
             font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus, select.config-input:focus {
+            border-color: var(--accent-primary);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.3);
+        }
+        input[type="text"]:disabled, input[type="password"]:disabled, input[type="number"]:disabled, select.config-input:disabled {
+            background-color: #333;
+            cursor: not-allowed;
+            color: var(--text-muted);
+        }
+        .config-checkbox {
+            margin-right: 10px;
+            transform: scale(1.3);
+            accent-color: var(--accent-primary);
+        }
+        .btn {
+            background-color: var(--accent-primary);
+            color: white;
+            padding: 12px 28px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
             width: 100%;
             margin-bottom: 10px;
+            transition: background-color 0.2s ease;
         }
-
         .btn:hover {
-            background-color: #3367d6;
+            background-color: var(--accent-primary-hover);
         }
-
         .btn:disabled {
-            background-color: #ccc;
+            background-color: #555;
+            color: #999;
             cursor: not-allowed;
         }
 
+        /* 5. Status Messages */
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-weight: 500;
+            border: 1px solid transparent;
+        }
+        .status.success {
+            background-color: rgba(67, 160, 71, 0.15);
+            border-color: var(--color-success);
+            color: #a5d6a7;
+        }
+        .status.error {
+            background-color: rgba(201, 60, 55, 0.15);
+            border-color: var(--color-danger);
+            color: #ef9a9a;
+        }
+        .status.info {
+            background-color: rgba(0, 122, 204, 0.15);
+            border-color: var(--accent-primary);
+            color: #90caf9;
+        }
+        .hidden { display: none; }
+        .loading { text-align: center; color: var(--text-secondary); padding: 20px 0; }
+
+        /* 6. Login Form (inside dashboard) */
+        .login-form {
+            text-align: center;
+            padding: 50px 0;
+        }
+        .login-form input[type="password"] {
+            width: 300px;
+            margin: 0 auto 20px auto;
+        }
+        .login-form .btn {
+            width: 300px;
+            margin: 0 auto;
+        }
+
+        /* 7. Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 25px;
+        }
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            border-bottom: 3px solid transparent;
+            color: var(--text-secondary);
+            font-size: 15px;
+            font-weight: 500;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .tab:hover {
+            color: var(--text-primary);
+        }
+        .tab.active {
+            background: transparent;
+            border-bottom-color: var(--accent-primary);
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* 8. OAuth Tab Specifics */
         .auth-url {
-            background-color: #f8f9fa;
-            border: 1px solid #e1e4e8;
-            border-radius: 5px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
             padding: 15px;
             margin: 20px 0;
             word-break: break-all;
         }
-
-        .auth-url a {
-            color: #4285f4;
-            text-decoration: none;
-        }
-
-        .auth-url a:hover {
-            text-decoration: underline;
-        }
-
         .credentials {
-            background-color: #f0f8ff;
-            border: 1px solid #b0d4ff;
-            border-radius: 5px;
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
             padding: 15px;
             margin: 20px 0;
-            font-family: monospace;
-            font-size: 12px;
+            font-family: var(--font-family-mono);
+            font-size: 13px;
+            color: var(--text-primary);
             white-space: pre-wrap;
             word-break: break-all;
             max-height: 400px;
             overflow-y: auto;
         }
-
-        .status {
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-        }
-
-        .status.success {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
-        }
-
-        .status.error {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
-        }
-
-        .status.info {
-            background-color: #d1ecf1;
-            border: 1px solid #bee5eb;
-            color: #0c5460;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        .loading {
-            text-align: center;
-            color: #666;
-        }
-
-        .login-form {
-            text-align: center;
-            padding: 50px 0;
-        }
-
-        .login-form input[type="password"] {
-            width: 300px;
+        div[onclick="toggleProjectIdSection()"] {
             padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-bottom: 20px;
-            box-sizing: border-box;
-        }
-
-        .tabs {
-            display: flex;
-            border-bottom: 1px solid #ddd;
-            margin-bottom: 20px;
-        }
-
-        .tab {
-            padding: 10px 20px;
-            cursor: pointer;
-            border: none;
-            background: #f5f5f5;
-            border-bottom: 2px solid transparent;
-        }
-
-        .tab.active {
-            background: white;
-            border-bottom-color: #4285f4;
-            color: #4285f4;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        /* 文件管理样式 */
-        .cred-card {
-            background-color: #f8f9fa;
-            border: 1px solid #e1e4e8;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 10px 0;
-            position: relative;
-        }
-
-        .cred-card.disabled {
-            background-color: #f5f5f5;
-            border-color: #ccc;
-            opacity: 0.7;
-        }
-
-        .cred-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .cred-filename {
-            font-family: monospace;
-            font-weight: bold;
-            color: #333;
-            font-size: 14px;
-        }
-
-        .cred-status {
-            display: flex;
-            gap: 5px;
-        }
-
-        .status-badge {
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            color: white;
-        }
-
-        .status-badge.enabled {
-            background-color: #28a745;
-        }
-
-        .status-badge.disabled {
-            background-color: #6c757d;
-        }
-
-        .error-codes {
-            background-color: #f8d7da;
-            color: #721c24;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-        }
-
-        .cred-actions {
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-            margin-top: 10px;
-        }
-
-        .cred-btn {
-            padding: 4px 12px;
-            border: none;
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
             transition: background-color 0.2s;
         }
-
-        .cred-btn.enable {
-            background-color: #28a745;
-            color: white;
+        div[onclick="toggleProjectIdSection()"]:hover {
+            background-color: #454a50;
+        }
+        div[onclick="toggleProjectIdSection()"] > span[style*="font-weight: bold"] {
+            color: var(--text-primary);
+        }
+        #projectIdSection {
+            margin-top: -1px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 0 0 6px 6px;
+            background: var(--bg-secondary);
+        }
+        #oauthTab .status.success p {
+            color: #a5d6a7;
         }
 
-        .cred-btn.disable {
-            background-color: #6c757d;
-            color: white;
-        }
-
-        .cred-btn.delete {
-            background-color: #dc3545;
-            color: white;
-        }
-
+        /* 9. Manage Tab: Cards & Stats */
         .manage-actions {
             margin-bottom: 20px;
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
         }
-
-        /* 文件管理新增样式 */
+        .manage-actions .btn {
+            width: auto;
+        }
+        .refresh-btn, .download-all-btn {
+            padding: 12px 28px; /* 已修改：与 .btn 保持一致 */
+            border: none;
+            border-radius: 6px;
+            font-size: 16px; /* 已修改：与 .btn 保持一致 */
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            color: white;
+        }
+        .refresh-btn { background-color: #17a2b8; }
+        .refresh-btn:hover { background-color: #1dc4e0; }
+        .download-all-btn { background-color: var(--color-success); }
+        .download-all-btn:hover { filter: brightness(1.1); }
+        
         .stats-container {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
             gap: 15px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
+            margin-bottom: 25px;
         }
-
         .stat-item {
-            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
-            border: 1px solid #dee2e6;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
-            padding: 12px 20px;
+            padding: 15px;
             text-align: center;
-            min-width: 120px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid;
         }
-
         .stat-number {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: bold;
-            color: #333;
+            color: var(--text-primary);
             display: block;
         }
-
         .stat-label {
             font-size: 12px;
-            color: #666;
+            color: var(--text-secondary);
             text-transform: uppercase;
             margin-top: 4px;
         }
-
-        .stat-item.total {
-            border-left: 4px solid #007bff;
-        }
-
-        .stat-item.normal {
-            border-left: 4px solid #28a745;
-        }
-
-        .stat-item.disabled {
-            border-left: 4px solid #6c757d;
-        }
-
-        .refresh-btn {
-            background-color: #17a2b8;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        .download-all-btn {
-            background-color: #28a745;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        /* 用户列表样式 */
+        .stat-item.total { border-left-color: var(--accent-primary); }
+        .stat-item.normal { border-left-color: var(--color-success); }
+        .stat-item.disabled { border-left-color: var(--text-muted); }
+        .stat-item.users { border-left-color: var(--color-warning); }
+        
         .user-item {
-            border: 1px solid #dee2e6;
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             margin-bottom: 10px;
-            background: white;
+            background: var(--bg-secondary);
             overflow: hidden;
+            transition: background-color 0.2s;
         }
-
         .user-header {
             padding: 15px;
-            background: #f8f9fa;
+            background: var(--bg-tertiary);
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
             transition: background-color 0.3s ease;
         }
-
-        .user-header:hover {
-            background: #e9ecef;
+        .user-header:hover { background: #454a50; }
+        .user-name { font-weight: bold; font-size: 16px; color: var(--text-primary); }
+        .user-stats { font-size: 14px; color: var(--text-secondary); }
+        .user-expand-icon { font-size: 18px; color: var(--text-secondary); transition: transform 0.3s ease; }
+        .user-item.expanded .user-expand-icon { transform: rotate(90deg); }
+        .user-creds { display: none; padding: 15px; border-top: 1px solid var(--border-color); }
+        .user-item.expanded .user-creds { display: block; }
+        
+        .cred-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            position: relative;
         }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
+        .cred-card.disabled { opacity: 0.6; }
+        .cred-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .cred-filename { font-family: var(--font-family-mono); font-weight: bold; color: var(--text-primary); font-size: 14px; }
+        .cred-status { display: flex; gap: 8px; align-items: center;}
+        .status-badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; color: white; font-weight: 500; }
+        .status-badge.enabled { background-color: var(--color-success); }
+        .status-badge.disabled { background-color: var(--text-muted); }
+        .error-codes { background-color: rgba(201, 60, 55, 0.7); color: white; padding: 3px 10px; border-radius: 12px; font-size: 12px; }
+        .cred-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 15px; }
+        .cred-btn {
+            padding: 5px 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: filter 0.2s;
+            color: white;
         }
-
-        .user-name {
-            font-weight: bold;
-            font-size: 16px;
-            color: #333;
+        .cred-btn:hover { filter: brightness(1.15); }
+        .cred-btn.enable { background-color: var(--color-success); }
+        .cred-btn.disable { background-color: var(--text-muted); }
+        .cred-btn.delete { background-color: var(--color-danger); }
+        .usage-info { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr;
+            gap: 10px; 
+            margin-top: 10px;
+            font-size: 12px;
         }
-
-        .user-stats {
-            display: flex;
-            gap: 15px;
-            font-size: 14px;
-            color: #666;
+        .usage-info-item {
+            background-color: var(--bg-tertiary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
         }
+        .usage-info-label { font-weight: bold; color: var(--text-secondary); display: block; margin-bottom: 4px; }
+        .usage-info-value { color: var(--text-primary); font-family: var(--font-family-mono); }
 
-        .user-expand-icon {
-            font-size: 18px;
-            color: #666;
-            transition: transform 0.3s ease;
-        }
-
-        .user-item.expanded .user-expand-icon {
-            transform: rotate(90deg);
-        }
-
-        .user-creds {
-            display: none;
-            padding: 0 15px 15px 15px;
-            border-top: 1px solid #dee2e6;
-        }
-
-        .user-item.expanded .user-creds {
-            display: block;
-        }
-
-        /* 配置管理样式 */
+        /* 10. Config Tab */
         .config-group {
-            background-color: #f8f9fa;
-            border: 1px solid #e1e4e8;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 20px;
-            margin: 15px 0;
+            margin: 20px 0;
         }
-
         .config-group h4 {
             margin-top: 0;
-            margin-bottom: 15px;
-            color: #333;
-            border-bottom: 1px solid #e1e4e8;
-            padding-bottom: 8px;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            text-align: left;
         }
-
-        .config-input {
+        .config-group .form-group {
+            margin-bottom: 15px;
+        }
+        .config-input { /* This is a custom class, not the global select */
             width: 100%;
-            padding: 8px 12px;
-            border: 2px solid #ddd;
-            border-radius: 4px;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border-radius: 6px;
             font-size: 14px;
             box-sizing: border-box;
             margin-bottom: 5px;
         }
-
         .config-input:focus {
-            border-color: #4285f4;
+            border-color: var(--accent-primary);
             outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.3);
         }
-
         .config-input:disabled {
-            background-color: #f5f5f5;
-            color: #666;
-            cursor: not-allowed;
+            background-color: #333;
+            opacity: 0.7;
         }
-
-        .config-checkbox {
-            margin-right: 8px;
-            transform: scale(1.2);
-        }
-
         .config-note {
             display: block;
-            color: #666;
-            font-size: 12px;
+            color: var(--text-muted);
+            font-size: 13px;
             margin-bottom: 10px;
             font-style: italic;
         }
-
         .config-info {
-            background-color: #e3f2fd;
-            border: 1px solid #1976d2;
-            border-radius: 4px;
-            padding: 12px;
+            background-color: rgba(0, 122, 204, 0.15);
+            border: 1px solid var(--accent-primary);
+            border-radius: 6px;
+            padding: 15px;
             margin-top: 8px;
             font-size: 13px;
-            color: #1565c0;
+            color: #90caf9;
         }
-
-        .config-info ul {
-            margin: 8px 0 4px 0;
-            color: #424242;
-        }
-
-        .config-info li {
-            margin: 3px 0;
-        }
-
-        .env-locked {
-            position: relative;
-        }
-
+        .config-info ul { margin: 8px 0 4px 0; color: var(--text-secondary); padding-left: 20px; }
+        .config-info li { margin: 4px 0; }
         .env-locked::after {
             content: "🔒 环境变量锚定";
             position: absolute;
-            right: 10px;
+            right: 12px;
             top: 50%;
             transform: translateY(-50%);
-            background-color: #ffc107;
-            color: #212529;
-            padding: 2px 6px;
-            border-radius: 3px;
+            background-color: var(--color-warning);
+            color: var(--bg-primary);
+            padding: 3px 8px;
+            border-radius: 4px;
             font-size: 11px;
+            font-weight: 600;
             pointer-events: none;
         }
 
-        /* 使用统计集成样式 */
-        .usage-info {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 10px;
-            font-size: 12px;
-        }
+        /* 11. Logs Tab */
+        #logsTab .manage-actions .btn { width: auto; flex-grow: 1; }
+        #logsTab .manage-actions .btn[style*="dc3545"] { background-color: var(--color-danger); }
+        #logsTab .manage-actions .btn[style*="28a745"] { background-color: var(--color-success); }
+        #logsTab .manage-actions .btn[style*="6c757d"] { background-color: var(--text-muted); }
 
-        .usage-info-item {
-            background-color: #ffffff;
+        .filter-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            background-color: var(--bg-tertiary);
+            padding: 12px;
+            border-radius: 6px;
+        }
+        .filter-select {
             padding: 8px;
-            border-radius: 4px;
-            border: 1px solid #dee2e6;
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
         }
-
-        .usage-info-label {
-            font-weight: bold;
-            color: #666;
-            display: block;
-            margin-bottom: 2px;
+        .filter-container label {
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-
-        .usage-info-value {
-            color: #333;
+        #logContainer {
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            font-family: var(--font-family-mono);
+            font-size: 13px;
+            height: 600px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 15px;
+            white-space: pre-wrap;
+            word-break: break-all;
         }
     </style>
 </head>
-
 <body>
     <div class="container">
         <!-- 登录界面 -->
         <div id="loginSection" class="login-form">
-            <h1>Google OAuth 认证管理</h1>
+            <h1>GG公益站-云GCLI控制面板</h1>
             <p>请输入访问密码：</p>
             <input type="password" id="loginPassword" placeholder="输入密码" onkeypress="handlePasswordEnter(event)" />
             <br>
@@ -529,7 +497,7 @@
         </div>
         <!-- 主界面 -->
         <div id="mainSection" class="hidden">
-            <h1>Google OAuth 认证管理</h1>
+            <h1>GG公益站-云GCLI控制面板</h1>
             <!-- 标签页 -->
             <div class="tabs">
                 <button class="tab active" onclick="switchTab(event, 'oauth')">OAuth认证</button>
@@ -542,31 +510,29 @@
                 <!-- API 自动启用说明 -->
                 <div class="status success" style="margin-bottom: 20px;">
                     <strong>✨ 自动化优化：</strong> 系统现在会在认证成功后自动为您的项目启用必需的API服务
-                    <ul style="margin: 10px 0; padding-left: 20px;">
+                    <ul style="margin: 10px 0;">
                         <li><strong>Gemini Cloud Assist API</strong></li>
                         <li><strong>Gemini for Google Cloud API</strong></li>
                     </ul>
-                    <p style="margin: 10px 0; color: #155724;"><strong>说明：</strong>无需手动启用API，系统会自动处理这些配置步骤，让认证流程更加顺畅。
+                    <p style="margin: 10px 0;"><strong>说明：</strong>无需手动启用API，系统会自动处理这些配置步骤，让认证流程更加顺畅。
                     </p>
                 </div>
                 <!-- 折叠式 Project ID 输入框 -->
                 <div class="form-group">
-                    <div style="cursor: pointer; user-select: none; padding: 12px; border: 2px solid #ddd; border-radius: 5px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center;"
+                    <div style="cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center;"
                         onclick="toggleProjectIdSection()">
-                        <span style="font-weight: bold; color: #555;">📁 高级选项：Google Cloud Project ID
+                        <span style="font-weight: bold;">📁 高级选项：Google Cloud Project ID
                             (不用管，直接点击获取链接即可)</span>
                         <span id="projectIdToggleIcon"
-                            style="font-size: 14px; color: #666; transition: transform 0.3s ease;">▶</span>
+                            style="font-size: 14px; transition: transform 0.3s ease;">▶</span>
                     </div>
-                    <div id="projectIdSection"
-                        style="display: none; margin-top: 15px; padding: 15px; border: 2px solid #ddd; border-top: none; border-radius: 0 0 5px 5px; background: #ffffff;">
+                    <div id="projectIdSection" style="display: none;">
                         <label for="projectId"
-                            style="display: block; margin-bottom: 5px; font-weight: bold; color: #555;">Google Cloud
+                            style="display: block; margin-bottom: 5px; font-weight: bold; margin-top: 15px;">Google Cloud
                             Project ID (可选):</label>
                         <input type="text" id="projectId"
-                            style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; box-sizing: border-box;"
                             placeholder="留空将尝试自动检测，或手动输入项目ID" />
-                        <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                        <small style="color: var(--text-muted); font-size: 12px; margin-top: 5px; display: block;">
                             💡 提示：如果你不懂这是什么，可以留空此字段让系统自动检测项目ID
                         </small>
                     </div>
@@ -594,12 +560,10 @@
                     <div class="credentials" id="credentialsContent"></div>
                 </div>
             </div>
-            </div>
             <!-- 用户和凭证管理标签页 -->
             <div id="manageTab" class="tab-content">
                 <h3>用户和凭证管理</h3>
                 <p>管理所有用户及其凭证，查看状态、统计并执行操作。</p>
-
                 <!-- 状态统计 -->
                 <div class="stats-container" id="statsContainer">
                     <div class="stat-item total">
@@ -619,12 +583,10 @@
                         <span class="stat-label">用户数</span>
                     </div>
                 </div>
-
                 <div class="manage-actions">
                     <button class="refresh-btn" onclick="fetchDashboardData()">刷新数据</button>
                     <button class="download-all-btn" onclick="downloadAllCredsBackup()">打包下载所有备份文件</button>
                 </div>
-
                 <!-- 用户列表视图 -->
                 <div id="usersListSection" style="display: block;">
                     <div class="loading" id="usersLoading" style="display: none;">正在加载数据...</div>
@@ -776,7 +738,7 @@
                             <div class="form-group">
                                 <div class="config-info">
                                     <strong>注意：</strong>抗截断功能现在通过模型名控制：
-                                    <ul style="margin: 5px 0; padding-left: 20px;">
+                                    <ul>
                                         <li>选择带有 "-流式抗截断" 后缀的模型即可启用</li>
                                         <li>该功能仅在流式传输时生效</li>
                                         <li>例如: "gemini-2.5-pro-流式抗截断"</li>
@@ -807,30 +769,26 @@
                         <option value="DEBUG">调试</option>
                     </select>
                     <label>
-                        <input type="checkbox" id="autoScroll" checked> 自动滚动到底部
+                        <input type="checkbox" id="autoScroll" class="config-checkbox" checked> 自动滚动到底部
                     </label>
                 </div>
                 <div id="logConnectionStatus" class="status info">
                     <strong>连接状态：</strong> <span id="connectionStatusText">未连接</span>
                 </div>
-                <div id="logContainer"
-                    style="background-color: #1e1e1e; color: #ffffff; font-family: 'Courier New', monospace; font-size: 12px; height: 600px; overflow-y: auto; border: 1px solid #333; border-radius: 5px; padding: 15px; white-space: pre-wrap; word-break: break-all;">
+                <div id="logContainer">
                     <div id="logContent">等待连接日志流...</div>
                 </div>
             </div>
             <div id="statusSection"></div>
         </div>
     </div>
-
     <script>
         let currentProjectId = '';
         let authInProgress = false;
         let authToken = '';
-
         // 新的全局状态变量
         let allUsers = [];
         let allCredentials = [];
-
         function showStatus(message, type = 'info') {
             const statusSection = document.getElementById('statusSection');
             if (statusSection) {
@@ -845,7 +803,6 @@
                 alert(message);
             }
         }
-
         // 保存token到cookie
         function saveTokenToCookie(token) {
             // 设置cookie过期时间为24小时
@@ -853,7 +810,6 @@
             expiryDate.setTime(expiryDate.getTime() + (24 * 60 * 60 * 1000));
             document.cookie = `authToken=${token}; expires=${expiryDate.toUTCString()}; path=/`;
         }
-        
         // 从cookie获取token
         function getTokenFromCookie() {
             const cookies = document.cookie.split(';');
@@ -865,12 +821,10 @@
             }
             return null;
         }
-        
         // 清除token cookie
         function clearTokenCookie() {
             document.cookie = 'authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
         }
-        
         // 登录相关函数
         async function login() {
             const password = document.getElementById('loginPassword').value;
@@ -899,7 +853,6 @@
                 showStatus(`网络错误: ${error.message}`, 'error');
             }
         }
-        
         // 尝试自动登录
         async function tryAutoLogin() {
             const savedToken = getTokenFromCookie();
@@ -910,7 +863,6 @@
                         method: 'GET',
                         headers: { 'Authorization': `Bearer ${savedToken}` }
                     });
-                    
                     if (response.ok) {
                         // token有效，自动登录
                         authToken = savedToken;
@@ -934,18 +886,16 @@
                 login();
             }
         }
-
         // 标签页切换
         function switchTab(event, tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            event.target.classList.add('active');
+            event.currentTarget.classList.add('active');
             document.getElementById(tabName + 'Tab').classList.add('active');
             if (tabName === 'manage') fetchDashboardData();
             if (tabName === 'config') loadConfig();
             if (tabName === 'logs') connectWebSocket();
         }
-
         // 获取认证头
         function getAuthHeaders() {
             return {
@@ -953,7 +903,6 @@
                 'Authorization': `Bearer ${authToken}`
             };
         }
-
         // OAuth 认证流程相关函数
         async function startAuth() {
             const projectId = document.getElementById('projectId').value.trim();
@@ -985,7 +934,6 @@
                 btn.textContent = '获取认证链接';
             }
         }
-
         async function getCredentials() {
             if (!authInProgress) {
                 showStatus('请先获取认证链接并完成授权', 'error');
@@ -1017,7 +965,6 @@
                 btn.textContent = '获取认证文件';
             }
         }
-
         function toggleProjectIdSection() {
             const section = document.getElementById('projectIdSection');
             const icon = document.getElementById('projectIdToggleIcon');
@@ -1031,35 +978,28 @@
                 icon.textContent = '▶';
             }
         }
-
         // =====================================================================
         // 用户和凭证管理 (新)
         // =====================================================================
-
         async function fetchDashboardData() {
             const usersLoading = document.getElementById('usersLoading');
             const usersListDiv = document.getElementById('usersList');
             try {
                 usersLoading.style.display = 'block';
                 usersListDiv.innerHTML = '';
-
                 const response = await fetch('/admin/dashboard-data', {
                     method: 'GET',
                     headers: getAuthHeaders()
                 });
-
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.detail || '获取数据失败');
                 }
-
                 const data = await response.json();
                 allUsers = data.users || [];
                 allCredentials = data.credentials || [];
-
                 renderDashboard();
                 showStatus(`成功加载 ${allUsers.length} 个用户和 ${allCredentials.length} 个凭证`, 'success');
-
             } catch (error) {
                 console.error('fetchDashboardData error:', error);
                 showStatus(`网络错误: ${error.message}`, 'error');
@@ -1067,26 +1007,22 @@
                 usersLoading.style.display = 'none';
             }
         }
-
         function renderDashboard() {
             // 1. 更新统计概览
             const totalCreds = allCredentials.length;
             const activeCreds = allCredentials.filter(c => c.is_active).length;
-
             document.getElementById('statTotal').textContent = totalCreds;
             document.getElementById('statNormal').textContent = activeCreds;
             document.getElementById('statDisabled').textContent = totalCreds - activeCreds;
             document.getElementById('statUserCount').textContent = allUsers.length;
             document.getElementById('statUsers').style.display = 'block';
-
             // 2. 渲染用户列表
             const usersListDiv = document.getElementById('usersList');
             usersListDiv.innerHTML = '';
             if (allUsers.length === 0) {
-                usersListDiv.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无用户</p>';
+                usersListDiv.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 20px;">暂无用户</p>';
                 return;
             }
-
             allUsers.forEach(user => {
                 const userCreds = allCredentials.filter(c => c.user_id === user.id);
                 const userItem = document.createElement('div');
@@ -1104,36 +1040,28 @@
         <div class="user-expand-icon">▶</div>
     </div>
     <div class="user-creds" id="creds-container-${user.id}">
-        
     </div>
 `;
                 usersListDiv.appendChild(userItem);
             });
         }
-
 function toggleUserExpand(userId) {
     console.log('[toggleUserExpand] called with id =', userId);
-
     const userItem = document.getElementById(`user-${userId}`);
     const credsContainer = document.getElementById(`creds-container-${userId}`);
     console.log('userItem >>', userItem);
     console.log('credsContainer >>', credsContainer);
-
     const isExpanded = userItem.classList.toggle('expanded');
     console.log('isExpanded =', isExpanded);
-
     if (isExpanded && credsContainer.innerHTML.trim() === '') {
         const user = allUsers.find(u => u.id == userId);  // ⭐ 宽松匹配
         console.log('found user =', user);
-
         if (!user) {
             credsContainer.innerHTML = '<p>找不到该用户</p>';
             return;
         }
-
         const userCreds = allCredentials.filter(c => c.user_id == user.id); // ⭐ 宽松匹配
         console.log('userCreds =', userCreds);
-
         if (userCreds.length === 0) {
             credsContainer.innerHTML = '<p>该用户暂无凭证</p>';
         } else {
@@ -1151,14 +1079,10 @@ function toggleUserExpand(userId) {
         }
     }
 }
-
-
         function createCredentialCard(cred) {
     console.log('[createCredentialCard] cred =', cred);
-
     const card = document.createElement('div');
     card.className = cred.is_active ? 'cred-card' : 'cred-card disabled';
-
     let errorCodes = [];
     try {
         if (cred.error_codes) {
@@ -1168,17 +1092,13 @@ function toggleUserExpand(userId) {
         console.warn('⚠️ error_codes 解析失败:', cred.error_codes, e);
         errorCodes = [];
     }
-
     let statusBadges = cred.is_active 
         ? '<span class="status-badge enabled">已启用</span>'
         : '<span class="status-badge disabled">已禁用</span>';
-
     if (errorCodes.length > 0) {
         statusBadges += `<span class="error-codes">错误: ${errorCodes.join(', ')}</span>`;
     }
-
     const lastSuccess = cred.last_success_at ? new Date(cred.last_success_at).toLocaleString('zh-CN') : '无';
-
     card.innerHTML = `
         <div class="cred-header">
             <div class="cred-filename">${cred.name}</div>
@@ -1203,11 +1123,8 @@ function toggleUserExpand(userId) {
             <button class="cred-btn delete" onclick="credentialAction('${cred.username}', '${cred.name}', 'delete')">删除</button>
         </div>
     `;
-
     return card;
 }
-
-
         async function credentialAction(username, credName, action) {
             if (action === 'delete' && !confirm(`确定要删除用户 '${username}' 的凭证 '${credName}' 吗？此操作不可恢复。`)) {
                 return;
@@ -1233,7 +1150,6 @@ function toggleUserExpand(userId) {
                 showStatus(`网络错误: ${error.message}`, 'error');
             }
         }
-
         async function downloadAllCredsBackup() {
             try {
                 const response = await fetch('/creds/download-all-backup', {
@@ -1259,8 +1175,6 @@ function toggleUserExpand(userId) {
                 showStatus(`网络错误: ${error.message}`, 'error');
             }
         }
-
-
         // =====================================================================
         // 配置管理
         // =====================================================================
@@ -1368,7 +1282,6 @@ function toggleUserExpand(userId) {
                 showStatus(`网络错误: ${error.message}`, 'error');
             }
         }
-
         // =====================================================================
         // 实时日志
         // =====================================================================
@@ -1465,7 +1378,6 @@ function toggleUserExpand(userId) {
             const logContent = document.getElementById('logContent');
             logContent.textContent = filteredLogs.length > 0 ? filteredLogs.join('\n') : '暂无匹配日志...';
         }
-
         // 页面加载时
         window.onload = async function () {
             // 尝试自动登录
@@ -1476,5 +1388,4 @@ function toggleUserExpand(userId) {
         };
     </script>
 </body>
-
 </html>
