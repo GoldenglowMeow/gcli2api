@@ -6,7 +6,7 @@ from typing import Optional, List
 import time
 import json
 import os
-from log import log
+from log import logger
 from .user_database import user_db
 from .user_aware_credential_manager import UserCredentialManager
 
@@ -78,7 +78,7 @@ async def get_user_by_api_key_dependency(credentials: HTTPAuthorizationCredentia
 #         else:
 #             raise HTTPException(status_code=400, detail=result["error"])
 #     except Exception as e:
-#         log.error(f"用户注册失败: {e}")
+#         logger.error(f"用户注册失败: {e}")
 #         raise HTTPException(status_code=500, detail="注册时发生错误")
 
 @router.post("/login")
@@ -98,7 +98,7 @@ async def login_user(request: UserLoginRequest, response: Response):
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"用户登录失败: {e}")
+        logger.error(f"用户登录失败: {e}")
         raise HTTPException(status_code=500, detail="登录时发生错误")
 
 @router.post("/logout")
@@ -245,24 +245,24 @@ async def get_credential_content(cred_name: str, current_user: dict = Depends(ge
 async def get_user_dashboard_data(current_user = Depends(get_current_user)):
     """获取用户的综合仪表盘数据，包括凭证列表、使用统计和聚合统计"""
     # 添加详细日志
-    log.info(f"开始获取仪表盘数据，current_user类型: {type(current_user)}")
-    log.info(f"current_user内容: {current_user}")
+    logger.info(f"开始获取仪表盘数据，current_user类型: {type(current_user)}")
+    logger.info(f"current_user内容: {current_user}")
     
     # 确保current_user不是协程对象
     if hasattr(current_user, "__await__"):
-        log.info("current_user是协程对象，等待解析")
+        logger.info("current_user是协程对象，等待解析")
         current_user = await current_user
-        log.info(f"解析后的current_user: {current_user}")
+        logger.info(f"解析后的current_user: {current_user}")
     
-    log.info(f"用户名: {current_user.get('username', '未知')}")
+    logger.info(f"用户名: {current_user.get('username', '未知')}")
     cred_mgr = UserCredentialManager(current_user["username"])
     try:
-        log.info("初始化凭证管理器")
+        logger.info("初始化凭证管理器")
         await cred_mgr.initialize()
-        log.info("开始获取凭证状态")
+        logger.info("开始获取凭证状态")
         # get_all_credentials_status 应该返回所有需要的字段
         all_creds_data = await cred_mgr.get_all_credentials_status()
-        log.info(f"获取到 {len(all_creds_data)} 个凭证")
+        logger.info(f"获取到 {len(all_creds_data)} 个凭证")
         
         enhanced_credentials = []
         summary_total_gemini_calls = 0
@@ -316,14 +316,14 @@ async def get_user_dashboard_data(current_user = Depends(get_current_user)):
         }
     except Exception as e:
         # 添加更健壮的错误处理
-        log.error(f"获取仪表盘数据时出错: {str(e)}")
-        log.error(f"错误类型: {type(e)}")
+        logger.error(f"获取仪表盘数据时出错: {str(e)}")
+        logger.error(f"错误类型: {type(e)}")
         import traceback
-        log.error(f"错误堆栈: {traceback.format_exc()}")
+        logger.error(f"错误堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"获取仪表盘数据时出错: {str(e)}")
     finally:
         # 确保数据库连接总是被关闭
-        log.info("关闭凭证管理器")
+        logger.info("关闭凭证管理器")
         await cred_mgr.close()
 
 @router.post("/user/usage/update-limits")

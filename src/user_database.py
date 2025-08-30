@@ -6,7 +6,7 @@ import os
 import re
 import json
 from typing import Optional, List, Dict, Any
-from log import log
+from log import logger
 
 # 数据库文件路径
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data.sqlite')
@@ -80,12 +80,12 @@ class UserDatabase:
                     END;
                 ''')
                 await db.commit()
-                log.info("用户数据库及凭证表初始化完成")
+                logger.info("用户数据库及凭证表初始化完成")
                 
                 # 检查是否需要创建默认用户
                 # await self._create_default_user_if_needed()
         except Exception as e:
-            log.error(f"数据库初始化失败: {e}")
+            logger.error(f"数据库初始化失败: {e}")
             raise
             
     async def _create_default_user_if_needed(self):
@@ -96,7 +96,7 @@ class UserDatabase:
                 async with db.execute("SELECT COUNT(*) FROM users") as cursor:
                     count = await cursor.fetchone()
                     if count and count[0] > 0:
-                        log.info("数据库中已有用户，跳过默认用户创建")
+                        logger.info("数据库中已有用户，跳过默认用户创建")
                         return
                 
                 # 创建默认用户
@@ -106,7 +106,7 @@ class UserDatabase:
                 # 检查用户名是否已存在
                 async with db.execute("SELECT id FROM users WHERE username = ?", (default_username,)) as cursor:
                     if await cursor.fetchone():
-                        log.info(f"默认用户 {default_username} 已存在")
+                        logger.info(f"默认用户 {default_username} 已存在")
                         return
                 
                 password_hash, salt = self.hash_password(default_password)
@@ -124,9 +124,9 @@ class UserDatabase:
                 user_creds_dir = os.path.join(os.path.dirname(__file__), '..', 'creds', default_username)
                 os.makedirs(user_creds_dir, exist_ok=True)
                 
-                log.info(f"已创建默认用户 {default_username}，ID: {user_id}，密码: {default_password}")
+                logger.info(f"已创建默认用户 {default_username}，ID: {user_id}，密码: {default_password}")
         except Exception as e:
-            log.error(f"创建默认用户失败: {e}")
+            logger.error(f"创建默认用户失败: {e}")
             # 不抛出异常，让程序继续运行
 
     # --- 辅助方法 (保持同步) ---
@@ -171,10 +171,10 @@ class UserDatabase:
                 user_creds_dir = os.path.join(os.path.dirname(__file__), '..', 'creds', username)
                 os.makedirs(user_creds_dir, exist_ok=True)
                 
-                log.info(f"用户 {username} 创建成功，ID: {user_id}")
+                logger.info(f"用户 {username} 创建成功，ID: {user_id}")
                 return {"success": True, "user_id": user_id, "username": username, "api_key": api_key}
         except Exception as e:
-            log.error(f"创建用户失败: {e}")
+            logger.error(f"创建用户失败: {e}")
             return {"success": False, "error": "创建用户时发生错误"}
 
     async def authenticate_user(self, username: str, password: str) -> Dict[str, Any]:
@@ -197,10 +197,10 @@ class UserDatabase:
                 await db.execute('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', (user["id"],))
                 await db.commit()
                 
-                log.info(f"用户 {username} 登录成功")
+                logger.info(f"用户 {username} 登录成功")
                 return {"success": True, "user_id": user["id"], "username": user["username"], "api_key": user["api_key"]}
         except Exception as e:
-            log.error(f"用户认证失败: {e}")
+            logger.error(f"用户认证失败: {e}")
             return {"success": False, "error": "认证时发生错误"}
 
     # --- 凭证管理 (CRUD) (异步) ---
@@ -224,7 +224,7 @@ class UserDatabase:
                 cred_id = cursor.lastrowid
                 await db.commit()
                 
-                log.info(f"为用户ID {user_id} 添加凭证 {name} (ID: {cred_id})，下次重置时间设为 {next_reset_formatted}")
+                logger.info(f"为用户ID {user_id} 添加凭证 {name} (ID: {cred_id})，下次重置时间设为 {next_reset_formatted}")
 
                 user_info = await self.get_user_by_id(user_id)
                 if user_info:
@@ -233,15 +233,15 @@ class UserDatabase:
                     os.makedirs(user_creds_dir, exist_ok=True)
                     with open(backup_path, 'w', encoding='utf-8') as f:
                         f.write(credential_data)
-                    log.info(f"为用户ID {user_id} 添加凭证 {name} (ID: {cred_id}) 并创建备份。")
+                    logger.info(f"为用户ID {user_id} 添加凭证 {name} (ID: {cred_id}) 并创建备份。")
                 else:
-                    log.warning(f"为用户ID {user_id} 添加凭证后，未能找到用户信息以创建备份文件。")
+                    logger.warning(f"为用户ID {user_id} 添加凭证后，未能找到用户信息以创建备份文件。")
                 return cred_id
         except aiosqlite.IntegrityError:
-            log.warning(f"尝试为用户ID {user_id} 添加已存在的凭证名称: {name}")
+            logger.warning(f"尝试为用户ID {user_id} 添加已存在的凭证名称: {name}")
             return None
         except Exception as e:
-            log.error(f"添加凭证失败: {e}")
+            logger.error(f"添加凭证失败: {e}")
             return None
 
     async def delete_credential(self, user_id: int, name: str) -> bool:
@@ -250,7 +250,7 @@ class UserDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute("DELETE FROM credentials WHERE user_id = ? AND name = ?", (user_id, name))
                 if cursor.rowcount == 0:
-                    log.warning(f"尝试删除不存在的凭证: 用户ID {user_id}, 名称 {name}")
+                    logger.warning(f"尝试删除不存在的凭证: 用户ID {user_id}, 名称 {name}")
                     return False
                 await db.commit()
 
@@ -258,11 +258,11 @@ class UserDatabase:
                     backup_path = os.path.join(os.path.dirname(__file__), '..', 'creds', user_info['username'], name)
                     if os.path.exists(backup_path):
                         os.remove(backup_path)
-                        log.info(f"删除了凭证备份文件: {backup_path}")
-                log.info(f"成功删除用户ID {user_id} 的凭证: {name}")
+                        logger.info(f"删除了凭证备份文件: {backup_path}")
+                logger.info(f"成功删除用户ID {user_id} 的凭证: {name}")
                 return True
         except Exception as e:
-            log.error(f"删除凭证失败: {e}")
+            logger.error(f"删除凭证失败: {e}")
             return False
 
     async def list_credentials_for_user(self, user_id: int) -> List[Dict[str, Any]]:
@@ -273,7 +273,7 @@ class UserDatabase:
                     rows = await cursor.fetchall()
                     return [dict(row) for row in rows]
         except Exception as e:
-            log.error(f"获取用户 {user_id} 的凭证列表失败: {e}")
+            logger.error(f"获取用户 {user_id} 的凭证列表失败: {e}")
             return []
 
     async def get_active_credentials_for_rotation(self, user_id: int) -> List[Dict[str, Any]]:
@@ -284,7 +284,7 @@ class UserDatabase:
                     rows = await cursor.fetchall()
                     return [dict(row) for row in rows]
         except Exception as e:
-            log.error(f"获取用户 {user_id} 的可用凭证失败: {e}")
+            logger.error(f"获取用户 {user_id} 的可用凭证失败: {e}")
             return []
 
     async def update_credential(self, cred_id: int, data: Dict[str, Any]) -> bool:
@@ -297,7 +297,7 @@ class UserDatabase:
                 values.append(json.dumps(value) if isinstance(value, (dict, list)) else value)
         
         if not fields:
-            log.warning("更新凭证时没有提供有效字段。")
+            logger.warning("更新凭证时没有提供有效字段。")
             return False
         
         values.append(cred_id)
@@ -310,13 +310,13 @@ class UserDatabase:
                 if cursor.rowcount > 0:
                     return True
                 else:
-                    log.warning(f"更新凭证ID {cred_id} 失败: 没有找到匹配的记录或数据未变化，SQL: {query}, 值: {values}")
+                    logger.warning(f"更新凭证ID {cred_id} 失败: 没有找到匹配的记录或数据未变化，SQL: {query}, 值: {values}")
                     return False
         except sqlite3.Error as e:
-            log.error(f"更新凭证ID {cred_id} 失败: 数据库错误 - {e.__class__.__name__}: {e}, SQL: {query}, 值: {values}")
+            logger.error(f"更新凭证ID {cred_id} 失败: 数据库错误 - {e.__class__.__name__}: {e}, SQL: {query}, 值: {values}")
             return False
         except Exception as e:
-            log.error(f"更新凭证ID {cred_id} 失败: 未知错误 - {e.__class__.__name__}: {e}, SQL: {query}, 值: {values}")
+            logger.error(f"更新凭证ID {cred_id} 失败: 未知错误 - {e.__class__.__name__}: {e}, SQL: {query}, 值: {values}")
             return False
             
 
@@ -325,10 +325,10 @@ class UserDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute("UPDATE credentials SET total_calls = 0, gemini_25_pro_calls = 0")
                 await db.commit()
-                log.info(f"已重置所有凭证的每日调用统计，共影响 {cursor.rowcount} 条记录。")
+                logger.info(f"已重置所有凭证的每日调用统计，共影响 {cursor.rowcount} 条记录。")
                 return True
         except Exception as e:
-            log.error(f"重置凭证每日用量失败: {e}")
+            logger.error(f"重置凭证每日用量失败: {e}")
             return False
             
     async def reset_daily_usage_for_credential(self, cred_id: int) -> bool:
@@ -351,13 +351,13 @@ class UserDatabase:
                 )
                 await db.commit()
                 if cursor.rowcount > 0:
-                    log.info(f"已重置凭证ID {cred_id} 的每日调用统计，下次重置时间设为 {next_reset_formatted}")
+                    logger.info(f"已重置凭证ID {cred_id} 的每日调用统计，下次重置时间设为 {next_reset_formatted}")
                     return True
                 else:
-                    log.warning(f"未找到凭证ID {cred_id} 或重置失败")
+                    logger.warning(f"未找到凭证ID {cred_id} 或重置失败")
                     return False
         except Exception as e:
-            log.error(f"重置凭证ID {cred_id} 的每日用量失败: {e}")
+            logger.error(f"重置凭证ID {cred_id} 的每日用量失败: {e}")
             return False
             
     async def check_and_reset_expired_credentials(self) -> int:
@@ -383,10 +383,10 @@ class UserDatabase:
                     reset_count += 1
             
             if reset_count > 0:
-                log.info(f"服务器启动时检查: 已重置 {reset_count} 个过期凭证的调用统计")
+                logger.info(f"服务器启动时检查: 已重置 {reset_count} 个过期凭证的调用统计")
             return reset_count
         except Exception as e:
-            log.error(f"检查并重置过期凭证失败: {e}")
+            logger.error(f"检查并重置过期凭证失败: {e}")
             return 0
 
     # --- 用户信息获取 (异步) ---
@@ -398,7 +398,7 @@ class UserDatabase:
                     row = await cursor.fetchone()
                     return dict(row) if row else None
         except Exception as e:
-            log.error(f"通过ID获取用户信息失败: {e}")
+            logger.error(f"通过ID获取用户信息失败: {e}")
             return None
             
     async def update_user_password(self, user_id: int, new_password: str) -> Dict[str, Any]:
@@ -431,10 +431,10 @@ class UserDatabase:
                 )
                 await db.commit()
                 
-            log.info(f"用户ID {user_id} 密码已更新")
+            logger.info(f"用户ID {user_id} 密码已更新")
             return {"success": True, "message": "密码已成功更新"}
         except Exception as e:
-            log.error(f"更新用户密码时出错: {str(e)}")
+            logger.error(f"更新用户密码时出错: {str(e)}")
             return {"success": False, "error": f"更新密码失败: {str(e)}"}
     
     async def get_all_users(self) -> List[Dict[str, Any]]:
@@ -452,7 +452,7 @@ class UserDatabase:
                     user_list.append(user)
                 return user_list
         except Exception as e:
-            log.error(f"获取用户列表失败: {e}")
+            logger.error(f"获取用户列表失败: {e}")
             return []
 
     async def _get_user_credential_count_from_db(self, user_id: int) -> int:
@@ -462,7 +462,7 @@ class UserDatabase:
                     count = await cursor.fetchone()
                     return count[0] if count else 0
         except Exception as e:
-            log.warning(f"从数据库获取用户 {user_id} 凭证数量失败: {e}")
+            logger.warning(f"从数据库获取用户 {user_id} 凭证数量失败: {e}")
             return 0
 
     async def get_user_by_api_key(self, api_key: str) -> Optional[Dict[str, Any]]:
@@ -473,7 +473,7 @@ class UserDatabase:
                     row = await cursor.fetchone()
                     return dict(row) if row else None
         except Exception as e:
-            log.error(f"获取用户信息失败: {e}")
+            logger.error(f"获取用户信息失败: {e}")
             return None
 
     async def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
@@ -484,7 +484,7 @@ class UserDatabase:
                     row = await cursor.fetchone()
                     return dict(row) if row else None
         except Exception as e:
-            log.error(f"通过用户名获取用户信息失败: {e}")
+            logger.error(f"通过用户名获取用户信息失败: {e}")
             return None
 
     async def regenerate_api_key(self, user_id: int) -> Dict[str, Any]:
@@ -495,10 +495,10 @@ class UserDatabase:
                 if cursor.rowcount == 0:
                     return {"success": False, "error": "用户不存在或已被禁用"}
                 await db.commit()
-                log.info(f"用户 {user_id} API密钥重新生成成功")
+                logger.info(f"用户 {user_id} API密钥重新生成成功")
                 return {"success": True, "api_key": new_api_key}
         except Exception as e:
-            log.error(f"重新生成API密钥失败: {e}")
+            logger.error(f"重新生成API密钥失败: {e}")
             return {"success": False, "error": "重新生成API密钥时发生错误"}
 
     # --- 会话管理 (异步) ---
@@ -513,7 +513,7 @@ class UserDatabase:
                 await db.commit()
                 return session_token
         except Exception as e:
-            log.error(f"创建会话失败: {e}")
+            logger.error(f"创建会话失败: {e}")
             return None
 
     async def validate_session(self, session_token: str) -> Optional[Dict[str, Any]]:
@@ -529,7 +529,7 @@ class UserDatabase:
                     row = await cursor.fetchone()
                     return dict(row) if row else None
         except Exception as e:
-            log.error(f"验证会话失败: {e}")
+            logger.error(f"验证会话失败: {e}")
             return None
 
     async def invalidate_session(self, session_token: str) -> bool:
@@ -539,7 +539,7 @@ class UserDatabase:
                 await db.commit()
                 return cursor.rowcount > 0
         except Exception as e:
-            log.error(f"使会话失效失败: {e}")
+            logger.error(f"使会话失效失败: {e}")
             return False
 
 # 全局数据库实例

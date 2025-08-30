@@ -23,7 +23,7 @@ from config import (
     get_retry_429_interval
 )
 import asyncio
-from log import log
+from log import logger
 
 def _create_error_response(message: str, status_code: int = 500) -> Response:
     """Create standardized error response."""
@@ -43,16 +43,16 @@ async def _handle_api_error(credential_manager: UserCredentialManager, status_co
     """Handle API errors by rotating credentials when needed. Error recording should be done before calling this function."""
     if status_code == 429 and credential_manager:
         if response_content:
-            log.error(f"Google API returned status 429 - quota exhausted. Response details: {response_content[:2000]}")
+            logger.error(f"Google API returned status 429 - quota exhausted. Response details: {response_content[:2000]}")
         else:
-            log.error("Google API returned status 429 - quota exhausted, switching credentials")
+            logger.error("Google API returned status 429 - quota exhausted, switching credentials")
         # 注意：在新的逻辑中，429错误会触发 _force_rotate_credential，这里保留 rotate_to_next_credential 作为通用后备
         await credential_manager._force_rotate_credential()
     elif get_auto_ban_enabled() and status_code in get_auto_ban_error_codes() and credential_manager:
         if response_content:
-            log.error(f"Google API returned status {status_code} - auto ban triggered. Response details: {response_content[:2000]}")
+            logger.error(f"Google API returned status {status_code} - auto ban triggered. Response details: {response_content[:2000]}")
         else:
-            log.warning(f"Google API returned status {status_code} - auto ban triggered, rotating credentials")
+            logger.warning(f"Google API returned status {status_code} - auto ban triggered, rotating credentials")
         await credential_manager._force_rotate_credential()
 
 async def _prepare_request_headers_and_payload(payload: dict, creds, credential_manager: UserCredentialManager):
@@ -145,7 +145,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                         await client.aclose()
 
                         if retry_429_enabled and attempt < max_retries:
-                            log.info(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
+                            logger.info(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
                             await credential_manager._force_rotate_credential()
                             new_creds, _ = await credential_manager.get_credentials()
                             if not new_creds:
@@ -155,7 +155,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             await asyncio.sleep(retry_interval)
                             continue
                         else:
-                            log.warning(f"[RETRY] Max retries exceeded for 429 error")
+                            logger.warning(f"[RETRY] Max retries exceeded for 429 error")
                             async def error_stream():
                                 error_response = {"error": {"message": f"多次自动重试均遇到429错误，请稍后重试", "type": "api_error", "code": 429}}
                                 yield f'data: {json.dumps(error_response)}\n\n'.encode('utf-8')
@@ -183,7 +183,7 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                         await credential_manager.record_error(resp.status_code, response_content)
 
                         if retry_429_enabled and attempt < max_retries:
-                            log.info(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
+                            logger.info(f"[RETRY] 429 error encountered, retrying ({attempt + 1}/{max_retries})")
                             await credential_manager._force_rotate_credential()
                             new_creds, _ = await credential_manager.get_credentials()
                             if not new_creds:
@@ -193,17 +193,17 @@ async def send_gemini_request(payload: dict, is_streaming: bool = False, creds =
                             await asyncio.sleep(retry_interval)
                             continue
                         else:
-                            log.warning(f"[RETRY] Max retries exceeded for 429 error")
+                            logger.warning(f"[RETRY] Max retries exceeded for 429 error")
                             return _create_error_response(f"多次自动重试均遇到429错误，请稍后重试", 429)
                     else:
                         return await _handle_non_streaming_response(resp, credential_manager, payload.get("model", ""))
         except Exception as e:
             if attempt < max_retries:
-                log.warning(f"[RETRY] Request failed with exception, retrying ({attempt + 1}/{max_retries}): {str(e)}")
+                logger.warning(f"[RETRY] Request failed with exception, retrying ({attempt + 1}/{max_retries}): {str(e)}")
                 await asyncio.sleep(retry_interval)
                 continue
             else:
-                log.error(f"Request to Google API failed: {str(e)}")
+                logger.error(f"Request to Google API failed: {str(e)}")
                 return _create_error_response(f"Request failed: {str(e)}")
     
     return _create_error_response("Max retries exceeded", 429)
@@ -216,7 +216,7 @@ def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client:
         try: await client.aclose()
         except: pass
         
-        log.error(f"Google API returned status {status_code} (STREAMING). Details: {content[:2000]}")
+        logger.error(f"Google API returned status {status_code} (STREAMING). Details: {content[:2000]}")
         
         if credential_manager:
             await credential_manager.record_error(status_code, content)
@@ -231,9 +231,9 @@ def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client:
             # 使用aread()异步读取完整响应内容
             raw_content = asyncio.run_coroutine_threadsafe(resp.aread(), asyncio.get_event_loop()).result()
             response_content = raw_content.decode('utf-8', 'ignore')
-            log.debug(f"Raw error response content: {response_content}")
+            logger.debug(f"Raw error response content: {response_content}")
         except Exception as e:
-            log.error(f"Failed to read streaming error response: {e}")
+            logger.error(f"Failed to read streaming error response: {e}")
             pass
         return StreamingResponse(cleanup_and_error_stream(resp.status_code, response_content), media_type="text/event-stream", status_code=200)
 
@@ -257,13 +257,13 @@ def _handle_streaming_response_managed(resp: httpx.Response, stream_ctx, client:
                 except json.JSONDecodeError:
                     continue
         except Exception as e:
-            log.error(f"Streaming error: {e}")
+            logger.error(f"Streaming error: {e}")
             yield f'data: {json.dumps({"error": {"message": str(e), "type": "api_error", "code": 500}})}\n\n'.encode()
         finally:
             try: await stream_ctx.__aexit__(None, None, None)
-            except Exception as e: log.debug(f"Error closing stream context: {e}")
+            except Exception as e: logger.debug(f"Error closing stream context: {e}")
             try: await client.aclose()
-            except Exception as e: log.debug(f"Error closing client: {e}")
+            except Exception as e: logger.debug(f"Error closing client: {e}")
 
     return StreamingResponse(managed_stream_generator(), media_type="text/event-stream")
 
@@ -283,7 +283,7 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
                 media_type="application/json; charset=utf-8"
             )
         except Exception as e:
-            log.error(f"Failed to parse Google API response: {str(e)}")
+            logger.error(f"Failed to parse Google API response: {str(e)}")
             return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("Content-Type"))
     else:
         response_content = ""
@@ -291,7 +291,7 @@ async def _handle_non_streaming_response(resp: httpx.Response, credential_manage
             response_content = resp.content.decode('utf-8', 'ignore')
         except Exception: pass
 
-        log.error(f"Google API returned status {resp.status_code} (NON-STREAMING). Details: {response_content[:2000]}")
+        logger.error(f"Google API returned status {resp.status_code} (NON-STREAMING). Details: {response_content[:2000]}")
 
         if credential_manager:
             await credential_manager.record_error(resp.status_code, response_content)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
 from typing import Optional
 import config
-from log import log
+from log import logger
 from .user_database import user_db
 
 router = APIRouter()
@@ -29,11 +29,11 @@ async def verify_bot_api_key(x_bot_api_key: str = Header(None)):
     
     valid_api_key = config.get_bot_api_key()
     if not valid_api_key:
-        log.error("Bot API Key未配置")
+        logger.error("Bot API Key未配置")
         raise HTTPException(status_code=500, detail="服务器未正确配置Bot API Key")
     
     if x_bot_api_key != valid_api_key:
-        log.warning(f"Bot API Key验证失败")
+        logger.warning(f"Bot API Key验证失败")
         raise HTTPException(status_code=401, detail="无效的API密钥")
     
     return True
@@ -63,14 +63,14 @@ async def bot_register_user(
             
         user_id = result.get("user_id")
         
-        log.info(f"Bot API成功注册用户: {request.username}")
+        logger.info(f"Bot API成功注册用户: {request.username}")
         return {
             "success": True,
             "message": "用户注册成功",
             "user_id": user_id
         }
     except Exception as e:
-        log.error(f"Bot API注册用户失败: {str(e)}")
+        logger.error(f"Bot API注册用户失败: {str(e)}")
         return {"success": False, "message": f"注册失败: {str(e)}"}
         
 @router.post("/bot/change_password", tags=["Bot API"])
@@ -95,11 +95,11 @@ async def bot_change_password(
         if not result.get("success"):
             return {"success": False, "message": result.get("error", "修改密码失败")}
         
-        log.info(f"Bot API成功修改用户密码: {request.username}")
+        logger.info(f"Bot API成功修改用户密码: {request.username}")
         return {
             "success": True,
             "message": "密码修改成功"
         }
     except Exception as e:
-        log.error(f"Bot API修改密码失败: {str(e)}")
+        logger.error(f"Bot API修改密码失败: {str(e)}")
         return {"success": False, "message": f"修改密码失败: {str(e)}"}

@@ -19,7 +19,7 @@ from config import (
 # 核心修改：从数据库模块导入 user_db 实例
 from .user_database import user_db
 from .utils import get_user_agent, get_client_metadata
-from log import log
+from log import logger
 
 class UserCredentialManager:
     """基于SQLite数据库的用户凭证管理器，支持用户隔离"""
@@ -69,14 +69,14 @@ class UserCredentialManager:
             if not user_data:
                 raise ValueError(f"无法初始化凭证管理器：用户 '{self.username}' 不存在。")
             # 添加日志记录user_data的内容
-            log.info(f"获取到用户数据: {user_data}")
+            logger.info(f"获取到用户数据: {user_data}")
             # 尝试从不同的键获取user_id
             if 'user_id' in user_data:
                 self.user_id = user_data['user_id']
             elif 'id' in user_data:
                 self.user_id = user_data['id']
             else:
-                log.error(f"用户数据中没有user_id或id字段: {user_data}")
+                logger.error(f"用户数据中没有user_id或id字段: {user_data}")
                 raise ValueError(f"无法获取用户ID: 数据结构不符合预期")
 
             # 从数据库加载凭证到缓存
@@ -93,7 +93,7 @@ class UserCredentialManager:
             self._http_client = httpx.AsyncClient(**client_kwargs)
             
             self._initialized = True
-            log.info(f"用户 '{self.username}' 的凭证管理器初始化完成。")
+            logger.info(f"用户 '{self.username}' 的凭证管理器初始化完成。")
 
     async def close(self):
         """清理资源"""
@@ -103,16 +103,16 @@ class UserCredentialManager:
 
     async def _load_credentials_from_db(self):
         """从数据库加载激活的凭证到内部缓存。必须在锁内调用。"""
-        log.debug(f"用户 '{self.username}': 从数据库刷新凭证缓存...")
+        logger.debug(f"用户 '{self.username}': 从数据库刷新凭证缓存...")
         if not self.user_id:
-            log.error(f"用户 '{self.username}' 的 user_id 未设置，无法加载凭证。")
+            logger.error(f"用户 '{self.username}' 的 user_id 未设置，无法加载凭证。")
             return
 
         self._credentials_cache = await user_db.get_active_credentials_for_rotation(self.user_id)
         self._last_cache_refresh_time = time.time()
 
         if not self._credentials_cache:
-            log.warning(f"用户 '{self.username}' 没有找到可用的凭证。")
+            logger.warning(f"用户 '{self.username}' 没有找到可用的凭证。")
             self._current_credential_index = 0
             self._cached_credentials_obj = None
             self._current_credential_record = None
@@ -120,7 +120,7 @@ class UserCredentialManager:
             # 如果索引超出范围，重置
             if self._current_credential_index >= len(self._credentials_cache):
                 self._current_credential_index = 0
-            log.info(f"用户 '{self.username}': 加载了 {len(self._credentials_cache)} 个可用凭证。")
+            logger.info(f"用户 '{self.username}': 加载了 {len(self._credentials_cache)} 个可用凭证。")
         
         # 清除缓存的凭证对象，强制重新加载
         self._cached_credentials_obj = None
@@ -134,7 +134,7 @@ class UserCredentialManager:
             return False
         
         # 避免频繁检查过期状态，如果最近刷新过则认为有效
-        if hasattr(self, '_last_refresh_time') and time.time() - self._last_refresh_time < 300:
+        if hasattr(self, '_last_refresh_time') and time.time() - self._last_refresh_time < 1800:
             return True
         
         if self._cached_credentials_obj.expired:
@@ -153,23 +153,23 @@ class UserCredentialManager:
         async with self._lock:
             # 如果缓存有效，直接返回缓存的凭证
             if self._is_cache_valid():
-                log.debug(f"使用缓存的凭证 (调用计数: {self._call_count}/{self._calls_per_rotation})")
+                logger.debug(f"使用缓存的凭证 (调用计数: {self._call_count}/{self._calls_per_rotation})")
                 self._call_count += 1  # 增加调用计数
                 return self._cached_credentials_obj, self._current_credential_record.get('project_id')
 
             # 如果需要，从数据库刷新凭证缓存
-            if not self._credentials_cache or time.time() - self._last_cache_refresh_time > 30:
+            if not self._credentials_cache or time.time() - self._last_cache_refresh_time > 600:
                 await self._load_credentials_from_db()
 
             if not self._credentials_cache:
-                log.error(f"用户 '{self.username}' 没有可用的凭证。")
+                logger.error(f"用户 '{self.username}' 没有可用的凭证。")
                 return None, None
 
             # 如果达到轮换阈值，切换到下一个凭证
             if self._call_count >= self._calls_per_rotation:
                 self._current_credential_index = (self._current_credential_index + 1) % len(self._credentials_cache)
                 self._call_count = 0
-                log.info(f"轮换到凭证索引 {self._current_credential_index}")
+                logger.info(f"轮换到凭证索引 {self._current_credential_index}")
                 # 清除缓存的凭证对象，强制重新加载
                 self._cached_credentials_obj = None
 
@@ -178,19 +178,19 @@ class UserCredentialManager:
             cred_record = self._current_credential_record
             cred_id = cred_record['id']
             cred_name = cred_record['name']
-            log.info(f"尝试加载凭证: {cred_name} (ID: {cred_id}, 索引: {self._current_credential_index})")
+            logger.info(f"尝试加载凭证: {cred_name} (ID: {cred_id}, 索引: {self._current_credential_index})")
 
         try:
             creds_data = json.loads(cred_record['credential_data'])
             creds = self._create_credentials_obj(creds_data)
             
             if creds.expired and creds.refresh_token:
-                log.info(f"凭证 '{cred_name}' 已过期，正在刷新...")
+                logger.info(f"凭证 '{cred_name}' 已过期，正在刷新...")
                 # 创建一个同步的请求对象，而不是使用异步客户端
                 # 这里使用标准的 google.auth.transport.requests.Request 而不是传入异步客户端
                 request = GoogleAuthRequest()
                 await asyncio.to_thread(creds.refresh, request)
-                log.info(f"凭证 '{cred_name}' 刷新成功。")
+                logger.info(f"凭证 '{cred_name}' 刷新成功。")
                 
                 # 更新凭证缓存，避免重复刷新
                 self._cached_credentials_obj = creds
@@ -212,19 +212,19 @@ class UserCredentialManager:
             project_id = cred_record.get('project_id') or creds_data.get('project_id')
 
         except Exception as e:
-            log.error(f"加载或刷新凭证 '{cred_name}' (ID: {cred_id}) 失败: {e}")
+            logger.error(f"加载或刷新凭证 '{cred_name}' (ID: {cred_id}) 失败: {e}")
             await self.record_error(500, f"Credential load failed: {e}")
             await self._force_rotate_credential()
             # 防止无限递归，如果没有更多凭证可用，直接返回 None
             if len(self._credentials_cache) <= 1:
-                log.error(f"没有更多可用凭证，无法继续尝试")
+                logger.error(f"没有更多可用凭证，无法继续尝试")
                 return None, None
             # 设置最大重试次数，避免无限递归
             if not hasattr(self, '_retry_count'):
                 self._retry_count = 0
             self._retry_count += 1
             if self._retry_count > 3:
-                log.error(f"尝试获取凭证失败次数过多，放弃尝试")
+                logger.error(f"尝试获取凭证失败次数过多，放弃尝试")
                 self._retry_count = 0
                 return None, None
             # 尝试获取下一个凭证
@@ -258,7 +258,7 @@ class UserCredentialManager:
         except ValueError as e:
             # 如果仍然出现日期解析错误，尝试更强的修复
             if "expiry" in creds_data and "unconverted data remains" in str(e):
-                log.warning(f"凭证日期格式错误: {e}，尝试修复...")
+                logger.warning(f"凭证日期格式错误: {e}，尝试修复...")
                 # 完全移除过期时间，让库自动处理
                 creds_data.pop("expiry", None)
                 return Credentials.from_authorized_user_info(creds_data, creds_data.get("scopes"))
@@ -268,14 +268,14 @@ class UserCredentialManager:
         """强制轮换到下一个凭证，通常在发生严重错误后调用"""
         async with self._lock:
             if not self._credentials_cache or len(self._credentials_cache) <= 1:
-                log.info("只有一个或没有可用凭证，无法强制轮换。")
+                logger.info("只有一个或没有可用凭证，无法强制轮换。")
                 return
             
             old_index = self._current_credential_index
             self._current_credential_index = (self._current_credential_index + 1) % len(self._credentials_cache)
             self._call_count = 0
             self._cached_credentials_obj = None
-            log.info(f"强制从凭证索引 {old_index} 轮换到 {self._current_credential_index}")
+            logger.info(f"强制从凭证索引 {old_index} 轮换到 {self._current_credential_index}")
 
     async def force_refresh_credential_cache(self):
         """外部调用，强制从数据库刷新凭证缓存"""
@@ -286,7 +286,7 @@ class UserCredentialManager:
         """增加调用计数器"""
         async with self._lock:
             self._call_count += 1
-            log.debug(f"调用计数增加到 {self._call_count}/{self._calls_per_rotation}")
+            logger.debug(f"调用计数增加到 {self._call_count}/{self._calls_per_rotation}")
 
     def _is_gemini_2_5_pro(self, model_name: str) -> bool:
         """检查模型是否为 gemini-2.5-pro 变体"""
@@ -300,7 +300,7 @@ class UserCredentialManager:
         """记录一次成功的API调用"""
         cred_record = self._current_credential_record
         if not cred_record:
-            log.warning("无法记录成功，因为没有当前凭证记录。")
+            logger.warning("无法记录成功，因为没有当前凭证记录。")
             return
         
         cred_id = cred_record['id']
@@ -318,15 +318,15 @@ class UserCredentialManager:
             async with self._lock:
                 if self._current_credential_record and self._current_credential_record['id'] == cred_id:
                     self._current_credential_record.update(update_data)
-            log.debug(f"成功记录到凭证ID {cred_id}。")
+            logger.debug(f"成功记录到凭证ID {cred_id}。")
         else:
-            log.error(f"记录成功到数据库失败，凭证ID {cred_id}")
+            logger.error(f"记录成功到数据库失败，凭证ID {cred_id}")
 
     async def record_error(self, status_code: int, response_content: str = ""):
         """记录一次失败的API调用"""
         cred_record = self._current_credential_record
         if not cred_record:
-            log.warning("无法记录错误，因为没有当前凭证记录。")
+            logger.warning("无法记录错误，因为没有当前凭证记录。")
             return
 
         cred_id = cred_record['id']
@@ -344,16 +344,16 @@ class UserCredentialManager:
                 async with self._lock:
                     if self._current_credential_record and self._current_credential_record['id'] == cred_id:
                         self._current_credential_record.update(update_data)
-                log.debug(f"错误 {status_code} 已记录到凭证 '{cred_name}' (ID: {cred_id})。")
+                logger.debug(f"错误 {status_code} 已记录到凭证 '{cred_name}' (ID: {cred_id})。")
             else:
-                log.error(f"记录错误到数据库失败，凭证ID {cred_id}，错误代码 {status_code}，响应内容: {response_content[:200] if response_content else 'None'}")
+                logger.error(f"记录错误到数据库失败，凭证ID {cred_id}，错误代码 {status_code}，响应内容: {response_content[:200] if response_content else 'None'}")
         except Exception as e:
-            log.error(f"记录错误时发生异常，凭证ID {cred_id}: {e}")
+            logger.error(f"记录错误时发生异常，凭证ID {cred_id}: {e}")
 
     async def add_credential(self, name: str, credential_data: Dict[str, Any]) -> bool:
         """添加新凭证到数据库并创建备份文件"""
         if not self.user_id:
-            log.error("无法添加凭证：user_id 未知。")
+            logger.error("无法添加凭证：user_id 未知。")
             return False
         
         try:
@@ -363,25 +363,25 @@ class UserCredentialManager:
 
             cred_id = await user_db.add_credential(self.user_id, name, cred_str, project_id, user_email)
             if cred_id:
-                log.info(f"用户 '{self.username}' 添加凭证 '{name}' 成功。")
+                logger.info(f"用户 '{self.username}' 添加凭证 '{name}' 成功。")
                 await self.force_refresh_credential_cache()
                 return True
             else:
-                log.error(f"用户 '{self.username}' 添加凭证 '{name}' 失败（可能已存在）。")
+                logger.error(f"用户 '{self.username}' 添加凭证 '{name}' 失败（可能已存在）。")
                 return False
         except Exception as e:
-            log.error(f"添加凭证时发生异常: {e}")
+            logger.error(f"添加凭证时发生异常: {e}")
             return False
 
     async def delete_credential(self, name: str) -> bool:
         """删除一个凭证"""
         if not self.user_id:
-            log.error("无法删除凭证：user_id 未知。")
+            logger.error("无法删除凭证：user_id 未知。")
             return False
             
         success = await user_db.delete_credential(self.user_id, name)
         if success:
-            log.info(f"用户 '{self.username}' 删除凭证 '{name}' 成功。")
+            logger.info(f"用户 '{self.username}' 删除凭证 '{name}' 成功。")
             await self.force_refresh_credential_cache()
         return success
 
@@ -400,7 +400,7 @@ class UserCredentialManager:
         cred_to_update = next((c for c in all_creds if c['name'] == name), None)
 
         if not cred_to_update:
-            log.warning(f"尝试更新不存在的凭证状态: {name}")
+            logger.warning(f"尝试更新不存在的凭证状态: {name}")
             return False
 
         cred_id = cred_to_update['id']

@@ -16,7 +16,7 @@ from .user_routes import get_user_by_api_key
 from config import get_config_value, get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
 from .anti_truncation import apply_anti_truncation_to_stream
 from config import get_base_model_name
-from log import log
+from log import logger
 
 # 创建路由器
 router = APIRouter()
@@ -31,12 +31,12 @@ async def get_user_credential_manager(username: str):
     global user_credential_managers
 
     if username not in user_credential_managers:
-        log.debug(f"创建新的用户凭证管理器实例: {username}")
+        logger.debug(f"创建新的用户凭证管理器实例: {username}")
         user_cred_mgr = UserCredentialManager(username)
         await user_cred_mgr.initialize()
         user_credential_managers[username] = user_cred_mgr
     else:
-        log.debug(f"复用现有的用户凭证管理器实例: {username}")
+        logger.debug(f"复用现有的用户凭证管理器实例: {username}")
 
     yield user_credential_managers[username]
 
@@ -48,9 +48,9 @@ async def cleanup_user_credential_managers():
         try:
             await manager.close()
         except Exception as e:
-            log.warning(f"关闭用户 {username} 的凭证管理器时出错: {e}")
+            logger.warning(f"关闭用户 {username} 的凭证管理器时出错: {e}")
     user_credential_managers.clear()
-    log.info("已清理所有用户凭证管理器实例缓存")
+    logger.info("已清理所有用户凭证管理器实例缓存")
 
 
 
@@ -66,7 +66,7 @@ async def authenticate_gemini_flexible(
     
     # 尝试从URL参数key获取（Google官方标准方式）
     if key:
-        log.debug(f"Using URL parameter key authentication")
+        logger.debug(f"Using URL parameter key authentication")
         token = key
     
     # 尝试从Authorization头获取（兼容旧方式）
@@ -74,15 +74,15 @@ async def authenticate_gemini_flexible(
         auth_header = request.headers.get("authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]  # 移除 "Bearer " 前缀
-            log.debug(f"Using Bearer token authentication")
+            logger.debug(f"Using Bearer token authentication")
     
     # 尝试从x-goog-api-key头获取（新标准方式）
     if not token and x_goog_api_key:
-        log.debug(f"Using x-goog-api-key authentication")
+        logger.debug(f"Using x-goog-api-key authentication")
         token = x_goog_api_key
     
     if not token:
-        log.error(f"No authentication token found. Headers: {dict(request.headers)}, Query params: key={key}")
+        logger.error(f"No authentication token found. Headers: {dict(request.headers)}, Query params: key={key}")
         raise HTTPException(
             status_code=400,
             detail="缺少认证信息。请使用'key'URL参数、'x-goog-api-key'请求头或'Authorization: Bearer <token>'提供gcli2api密钥"
@@ -140,7 +140,7 @@ async def generate_content(
     try:
         request_data = await request.json()
     except Exception as e:
-        log.error(f"Failed to parse JSON request: {e}")
+        logger.error(f"Failed to parse JSON request: {e}")
         return JSONResponse(
             status_code=400,
             content={
@@ -191,7 +191,7 @@ async def generate_content(
     
     # 对于抗截断模型的非流式请求，给出警告
     if use_anti_truncation:
-        log.info("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
+        logger.info("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
     
     # 健康检查
     if (len(request_data["contents"]) == 1 and 
@@ -230,7 +230,7 @@ async def process_generate_content(request_data, model, real_model, use_fake_str
         # 获取凭证
         creds, project_id = await cred_mgr.get_credentials()
         if not creds:
-            log.error("当前无可用凭证")
+            logger.error("当前无可用凭证")
             return JSONResponse(
                 status_code=403,
                 content={
@@ -249,7 +249,7 @@ async def process_generate_content(request_data, model, real_model, use_fake_str
         try:
             api_payload = build_gemini_payload_from_native(request_data, real_model)
         except Exception as e:
-            log.error(f"Gemini payload build failed: {e}")
+            logger.error(f"Gemini payload build failed: {e}")
             return JSONResponse(
                 status_code=500,
                 content={
@@ -276,7 +276,7 @@ async def process_generate_content(request_data, model, real_model, use_fake_str
             return JSONResponse(content=response_data)
             
         except Exception as e:
-            log.error(f"Response processing failed: {e}")
+            logger.error(f"Response processing failed: {e}")
             # 返回原始响应
             if hasattr(response, 'content'):
                 return JSONResponse(content=json.loads(response.content))
@@ -302,14 +302,14 @@ async def stream_generate_content(
     auth_info: dict = Depends(authenticate_gemini_flexible)
 ):
     """处理Gemini格式的流式内容生成请求"""
-    log.info(f"Stream request received for model: {model}")
-    log.info(f"Request headers: {dict(request.headers)}")
+    logger.info(f"Stream request received for model: {model}")
+    logger.info(f"Request headers: {dict(request.headers)}")
     
     # 获取原始请求数据
     try:
         request_data = await request.json()
     except Exception as e:
-        log.error(f"Failed to parse JSON request: {e}")
+        logger.error(f"Failed to parse JSON request: {e}")
         # 返回流式错误响应
         async def error_stream():
             error_chunk = {
@@ -388,7 +388,7 @@ async def process_stream_generate_content(request_data, real_model, use_anti_tru
     # 获取凭证
     creds, project_id = await cred_mgr.get_credentials()
     if not creds:
-        log.error("当前无可用凭证")
+        logger.error("当前无可用凭证")
         # 返回流式错误响应
         async def error_stream():
             error_chunk = {
@@ -410,12 +410,12 @@ async def process_stream_generate_content(request_data, real_model, use_anti_tru
     try:
         api_payload = build_gemini_payload_from_native(request_data, real_model)
     except Exception as e:
-        log.error(f"Gemini payload build failed: {e}")
+        logger.error(f"Gemini payload build failed: {e}")
         raise HTTPException(status_code=500, detail="Request processing failed")
     
     # 处理抗截断功能（仅流式传输时有效）
     if use_anti_truncation:
-        log.info("启用流式抗截断功能")
+        logger.info("启用流式抗截断功能")
         # 使用全局配置
         max_attempts = get_anti_truncation_max_attempts()
         return await apply_anti_truncation_to_stream(
@@ -440,7 +440,7 @@ async def get_model_info(
 ):
     """获取特定模型的信息"""
     
-    log.info(f"Model info request for: {model}")
+    logger.info(f"Model info request for: {model}")
     
     # 验证用户权限（可选：根据需要添加模型访问控制）
     # 这里暂时允许所有认证用户访问模型信息
@@ -493,7 +493,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
                 # 获取凭证
                 creds, project_id = await cred_mgr.get_credentials()
                 if not creds:
-                    log.error("当前无可用凭证")
+                    logger.error("当前无可用凭证")
                     error_chunk = {
                         "error": {
                             "message": "无有效的Gemini CLI凭证。请确保您已在用户面板中上传了有效的凭证。",
@@ -512,7 +512,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
                 try:
                     api_payload = build_gemini_payload_from_native(request_data, model)
                 except Exception as e:
-                    log.error(f"Gemini payload build failed: {e}")
+                    logger.error(f"Gemini payload build failed: {e}")
                     error_chunk = {
                         "error": {
                             "message": f"Request processing failed: {str(e)}",
@@ -565,7 +565,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
                     else:
                         response_data = json.loads(str(response))
                     
-                    log.debug(f"Gemini fake stream response data: {response_data}")
+                    logger.debug(f"Gemini fake stream response data: {response_data}")
                     
                     # 发送完整内容作为单个chunk，使用思维链分离
                     if "candidates" in response_data and response_data["candidates"]:
@@ -574,12 +574,12 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
                         if "content" in candidate and "parts" in candidate["content"]:
                             parts = candidate["content"]["parts"]
                             content, reasoning_content = _extract_content_and_reasoning(parts)
-                            log.debug(f"Gemini extracted content: {content}")
-                            log.debug(f"Gemini extracted reasoning: {reasoning_content[:100] if reasoning_content else 'None'}...")
+                            logger.debug(f"Gemini extracted content: {content}")
+                            logger.debug(f"Gemini extracted reasoning: {reasoning_content[:100] if reasoning_content else 'None'}...")
                             
                             # 如果没有正常内容但有思维内容
                             if not content and reasoning_content:
-                                log.warning(f"Gemini fake stream contains only thinking content: {reasoning_content[:100]}...")
+                                logger.warning(f"Gemini fake stream contains only thinking content: {reasoning_content[:100]}...")
                                 content = "[模型正在思考中，请稍后再试或重新提问]"
                             
                             if content:
@@ -600,7 +600,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
                                 }
                                 yield f"data: {json.dumps(content_chunk)}\n\n".encode()
                             else:
-                                log.warning(f"No content found in Gemini candidate: {candidate}")
+                                logger.warning(f"No content found in Gemini candidate: {candidate}")
                                 # 提供默认回复
                                 error_chunk = {
                                     "candidates": [{
@@ -614,15 +614,15 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
                                 }
                                 yield f"data: {json.dumps(error_chunk)}\n\n".encode()
                         else:
-                            log.warning(f"No content/parts found in Gemini candidate: {candidate}")
+                            logger.warning(f"No content/parts found in Gemini candidate: {candidate}")
                             # 返回原始响应
                             yield f"data: {json.dumps(response_data)}\n\n".encode()
                     else:
-                        log.warning(f"No candidates found in Gemini response: {response_data}")
+                        logger.warning(f"No candidates found in Gemini response: {response_data}")
                         yield f"data: {json.dumps(response_data)}\n\n".encode()
                     
                 except Exception as e:
-                    log.error(f"Response parsing failed: {e}")
+                    logger.error(f"Response parsing failed: {e}")
                     error_chunk = {
                         "candidates": [{
                             "content": {
@@ -638,7 +638,7 @@ async def fake_stream_response_gemini(request_data: dict, model: str, auth_info:
                 yield "data: [DONE]\n\n".encode()
                 
         except Exception as e:
-            log.error(f"Fake streaming error: {e}")
+            logger.error(f"Fake streaming error: {e}")
             error_chunk = {
                 "error": {
                     "message": f"Fake streaming error: {str(e)}",

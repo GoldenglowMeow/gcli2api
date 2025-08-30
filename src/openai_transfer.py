@@ -14,7 +14,7 @@ from config import (
     should_include_thoughts
 )
 
-from log import log
+from log import logger
 
 def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str, Any]:
     """
@@ -35,7 +35,7 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
     
     for message in openai_request.messages:
         role = message.role
-        log.debug(f"Processing message: role={role}, content={getattr(message, 'content', None)}")
+        logger.debug(f"Processing message: role={role}, content={getattr(message, 'content', None)}")
         
         # 处理系统消息
         if role == "system":
@@ -83,11 +83,11 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
                         except ValueError:
                             continue
             contents.append({"role": role, "parts": parts})
-            log.debug(f"Added message to contents: role={role}, parts={parts}")
+            logger.debug(f"Added message to contents: role={role}, parts={parts}")
         else:
             # 简单文本内容
             contents.append({"role": role, "parts": [{"text": message.content}]})
-            log.debug(f"Added message to contents: role={role}, content={message.content}")
+            logger.debug(f"Added message to contents: role={role}, content={message.content}")
     
     # 将OpenAI生成参数映射到Gemini格式
     generation_config = {}
@@ -133,7 +133,7 @@ def openai_request_to_gemini(openai_request: ChatCompletionRequest) -> Dict[str,
         combined_system_instruction = "\n\n".join(system_instructions)
         request_payload["system_instruction"] = combined_system_instruction
     
-    log.debug(f"Final request payload contents count: {len(contents)}, system_instruction: {bool(system_instructions)}")
+    logger.debug(f"Final request payload contents count: {len(contents)}, system_instruction: {bool(system_instructions)}")
     
     # 为thinking模型添加thinking配置
     thinking_budget = get_thinking_budget(openai_request.model)

@@ -722,9 +722,24 @@
                                 <small class="config-note">设置日志输出级别，级别越低记录的信息越详细</small>
                             </div>
                             <div class="form-group">
-                                <label for="logFile">日志文件路径:</label>
-                                <input type="text" id="logFile" class="config-input" placeholder="例如: log.txt" />
-                                <small class="config-note">日志文件的保存路径，相对于程序运行目录</small>
+                                <label for="maxLogSize">日志文件最大大小(KB):</label>
+                                <input type="number" id="maxLogSize" class="config-input" min="100" max="10000" />
+                                <small class="config-note">单个日志文件的最大大小，超过后将自动轮转</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="maxLogFiles">最大日志文件数量:</label>
+                                <input type="number" id="maxLogFiles" class="config-input" min="1" max="100" />
+                                <small class="config-note">保留的历史日志文件数量</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="logBufferSize">日志缓冲区大小:</label>
+                                <input type="number" id="logBufferSize" class="config-input" min="10" max="1000" />
+                                <small class="config-note">日志缓冲区大小，较大的值可减少磁盘I/O</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="logFlushInterval">日志刷新间隔(秒):</label>
+                                <input type="number" id="logFlushInterval" class="config-input" min="0.1" max="10" step="0.1" />
+                                <small class="config-note">日志缓冲区刷新到磁盘的时间间隔</small>
                             </div>
                         </div>
                         <div class="config-group">
@@ -1224,7 +1239,10 @@ function toggleUserExpand(userId) {
             setConfigField('retry429MaxRetries', currentConfig.retry_429_max_retries || 20);
             setConfigField('retry429Interval', currentConfig.retry_429_interval || 0.1);
             setConfigField('logLevel', currentConfig.log_level || 'info');
-            setConfigField('logFile', currentConfig.log_file || 'log.txt');
+            setConfigField('maxLogSize', currentConfig.max_log_size || 500);
+            setConfigField('maxLogFiles', currentConfig.max_log_files || 100);
+            setConfigField('logBufferSize', currentConfig.log_buffer_size || 1000);
+            setConfigField('logFlushInterval', currentConfig.log_flush_interval || 2.0);
             setConfigField('antiTruncationMaxAttempts', currentConfig.anti_truncation_max_attempts || 3);
         }
         function setConfigField(fieldId, value) {
@@ -1261,7 +1279,10 @@ function toggleUserExpand(userId) {
                     retry_429_max_retries: parseInt(document.getElementById('retry429MaxRetries').value) || 20,
                     retry_429_interval: parseFloat(document.getElementById('retry429Interval').value) || 0.1,
                     log_level: document.getElementById('logLevel').value || 'info',
-                    log_file: document.getElementById('logFile').value.trim() || 'log.txt',
+                    max_log_size: parseInt(document.getElementById('maxLogSize').value) || 500,
+                    max_log_files: parseInt(document.getElementById('maxLogFiles').value) || 100,
+                    log_buffer_size: parseInt(document.getElementById('logBufferSize').value) || 1000,
+                    log_flush_interval: parseFloat(document.getElementById('logFlushInterval').value) || 2.0,
                     anti_truncation_max_attempts: parseInt(document.getElementById('antiTruncationMaxAttempts').value) || 3,
                     // 保留bot_api_key值，确保不会被覆盖
                     bot_api_key: currentConfig.bot_api_key || ''
@@ -1344,7 +1365,7 @@ function toggleUserExpand(userId) {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'gcli2api_logs.txt';
+                    a.download = 'gcli2api_logs.zip';
                     a.click();
                     window.URL.revokeObjectURL(url);
                 } else {

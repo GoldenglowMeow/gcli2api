@@ -21,28 +21,28 @@ from src.bot_api import router as bot_router
 
 # Import utilities
 from config import get_server_host, get_server_port
-from log import log
+from log import logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    log.info("启动 GCLI2API 主服务")
+    logger.info("启动 GCLI2API 主服务")
 
     # 初始化用户数据库
     try:
         from src.user_database import user_db
         await user_db.init_database()
-        log.info("用户数据库初始化完成")
+        logger.info("用户数据库初始化完成")
     except Exception as e:
-        log.error(f"初始化用户数据库失败: {e}")
+        logger.error(f"初始化用户数据库失败: {e}")
 
     # 检查并重置过期凭证的调用次数
     try:
         reset_count = await user_db.check_and_reset_expired_credentials()
         if reset_count > 0:
-            log.info(f"服务器启动时已重置 {reset_count} 个过期凭证的调用统计")
+            logger.info(f"服务器启动时已重置 {reset_count} 个过期凭证的调用统计")
     except Exception as e:
-        log.error(f"检查并重置过期凭证失败: {e}")
+        logger.error(f"检查并重置过期凭证失败: {e}")
 
     # 启动定时任务，每天UTC 07:00重置所有凭证的调用次数
     try:
@@ -62,9 +62,9 @@ async def lifespan(app: FastAPI):
         )
         
         scheduler.start()
-        log.info("已启动凭证调用次数重置定时任务，将在每天UTC 07:00执行")
+        logger.info("已启动凭证调用次数重置定时任务，将在每天UTC 07:00执行")
     except Exception as e:
-        log.error(f"启动定时任务失败: {e}")
+        logger.error(f"启动定时任务失败: {e}")
 
     # OAuth回调服务器将在需要时按需启动
 
@@ -73,11 +73,11 @@ async def lifespan(app: FastAPI):
     # 关闭定时任务
     try:
         scheduler.shutdown()
-        log.info("已关闭定时任务调度器")
+        logger.info("已关闭定时任务调度器")
     except Exception as e:
-        log.error(f"关闭定时任务调度器失败: {e}")
+        logger.error(f"关闭定时任务调度器失败: {e}")
 
-    log.info("GCLI2API 主服务已停止")
+    logger.info("GCLI2API 主服务已停止")
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -158,24 +158,24 @@ if __name__ == "__main__":
     port = get_server_port()
     host = get_server_host()
     
-    log.info("=" * 60)
-    log.info("🚀 启动 GCLI2API")
-    log.info("=" * 60)
-    log.info(f"📍 服务地址: http://127.0.0.1:{port}")
-    log.info(f"🔧 控制面板: http://127.0.0.1:{port}/auth")
-    log.info("=" * 60)
-    log.info("🔗 API端点:")
-    log.info(f"   OpenAI兼容: http://127.0.0.1:{port}/v1")
-    log.info(f"   Gemini原生: http://127.0.0.1:{port}")
-    log.info("=" * 60)
-    log.info("⚡ 功能特性:")
-    log.info("   ✓ OpenAI格式兼容")
-    log.info("   ✓ Gemini原生格式")
-    log.info("   ✓ 429错误自动重试")
-    log.info("   ✓ 反截断完整输出")
-    log.info("   ✓ 凭证自动轮换")
-    log.info("   ✓ 实时管理面板")
-    log.info("=" * 60)
+    logger.info("=" * 60)
+    logger.info("🚀 启动 GCLI2API")
+    logger.info("=" * 60)
+    logger.info(f"📍 服务地址: http://127.0.0.1:{port}")
+    logger.info(f"🔧 控制面板: http://127.0.0.1:{port}/auth")
+    logger.info("=" * 60)
+    logger.info("🔗 API端点:")
+    logger.info(f"   OpenAI兼容: http://127.0.0.1:{port}/v1")
+    logger.info(f"   Gemini原生: http://127.0.0.1:{port}")
+    logger.info("=" * 60)
+    logger.info("⚡ 功能特性:")
+    logger.info("   ✓ OpenAI格式兼容")
+    logger.info("   ✓ Gemini原生格式")
+    logger.info("   ✓ 429错误自动重试")
+    logger.info("   ✓ 反截断完整输出")
+    logger.info("   ✓ 凭证自动轮换")
+    logger.info("   ✓ 实时管理面板")
+    logger.info("=" * 60)
 
     # 配置hypercorn
     config = Config()
@@ -194,9 +194,9 @@ if __name__ == "__main__":
         try:
             asyncio.run(serve(app, config))
         except KeyboardInterrupt:
-            log.info("接收到键盘中断，正在关闭服务...")
+            logger.info("接收到键盘中断，正在关闭服务...")
         finally:
-            log.info("服务已安全关闭")
+            logger.info("服务已安全关闭")
     else:
         # 非Windows系统使用事件循环和信号处理
         loop = asyncio.new_event_loop()
@@ -204,7 +204,7 @@ if __name__ == "__main__":
         
         # 定义信号处理函数
         def signal_handler():
-            log.info("接收到关闭信号，正在优雅关闭服务...")
+            logger.info("接收到关闭信号，正在优雅关闭服务...")
             shutdown_event.set()
         
         # 注册信号处理（仅在非Windows系统上）
@@ -218,7 +218,7 @@ if __name__ == "__main__":
             # 运行直到收到关闭信号
             loop.run_until_complete(server)
         except KeyboardInterrupt:
-            log.info("接收到键盘中断，正在关闭服务...")
+            logger.info("接收到键盘中断，正在关闭服务...")
         finally:
             # 确保所有任务都被正确关闭
             pending = asyncio.all_tasks(loop=loop)
@@ -231,7 +231,7 @@ if __name__ == "__main__":
             
             # 关闭事件循环
             loop.close()
-            log.info("服务已安全关闭")
+            logger.info("服务已安全关闭")
             
             # 确保进程正常退出
             sys.exit(0)

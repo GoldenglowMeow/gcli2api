@@ -4,7 +4,7 @@
 import os
 import json
 import time
-from log import log
+from log import logger
 import secrets
 import threading
 import subprocess
@@ -50,7 +50,7 @@ def find_available_port(start_port: int = None) -> int:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(('0.0.0.0', port))
-                log.info(f"找到可用端口: {port}")
+                logger.info(f"找到可用端口: {port}")
                 return port
         except OSError:
             continue
@@ -60,10 +60,10 @@ def find_available_port(start_port: int = None) -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(('0.0.0.0', 0))
             port = s.getsockname()[1]
-            log.info(f"系统分配可用端口: {port}")
+            logger.info(f"系统分配可用端口: {port}")
             return port
     except OSError as e:
-        log.error(f"无法找到可用端口: {e}")
+        logger.error(f"无法找到可用端口: {e}")
         raise RuntimeError("无法找到可用端口")
 
 def create_callback_server(port: int) -> HTTPServer:
@@ -77,10 +77,10 @@ def create_callback_server(port: int) -> HTTPServer:
         # 设置较短的超时时间
         server.timeout = 1.0
         
-        log.info(f"创建OAuth回调服务器，监听端口: {port}")
+        logger.info(f"创建OAuth回调服务器，监听端口: {port}")
         return server
     except OSError as e:
-        log.error(f"创建端口{port}的服务器失败: {e}")
+        logger.error(f"创建端口{port}的服务器失败: {e}")
         raise
 
 class AuthCallbackHandler(BaseHTTPRequestHandler):
@@ -90,14 +90,14 @@ class AuthCallbackHandler(BaseHTTPRequestHandler):
         code = query_components.get("code", [None])[0]
         state = query_components.get("state", [None])[0]
         
-        log.info(f"收到OAuth回调: code={'已获取' if code else '未获取'}, state={state}")
+        logger.info(f"收到OAuth回调: code={'已获取' if code else '未获取'}, state={state}")
         
         if code and state and state in auth_flows:
             # 更新流程状态
             auth_flows[state]['code'] = code
             auth_flows[state]['completed'] = True
             
-            log.info(f"OAuth回调成功处理: state={state}")
+            logger.info(f"OAuth回调成功处理: state={state}")
             
             self.send_response(200)
             self.send_header("Content-type", "text/html")
@@ -136,7 +136,7 @@ async def enable_required_apis(credentials: Credentials, project_id: str) -> boo
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             for service in required_services:
-                log.info(f"正在检查并启用服务: {service}")
+                logger.info(f"正在检查并启用服务: {service}")
                 
                 # 检查服务是否已启用
                 check_url = f"https://serviceusage.googleapis.com/v1/projects/{project_id}/services/{service}"
@@ -145,10 +145,10 @@ async def enable_required_apis(credentials: Credentials, project_id: str) -> boo
                     if check_response.status_code == 200:
                         service_data = check_response.json()
                         if service_data.get("state") == "ENABLED":
-                            log.info(f"服务 {service} 已启用")
+                            logger.info(f"服务 {service} 已启用")
                             continue
                 except Exception as e:
-                    log.debug(f"检查服务状态失败，将尝试启用: {e}")
+                    logger.debug(f"检查服务状态失败，将尝试启用: {e}")
                 
                 # 启用服务
                 enable_url = f"https://serviceusage.googleapis.com/v1/projects/{project_id}/services/{service}:enable"
@@ -156,23 +156,23 @@ async def enable_required_apis(credentials: Credentials, project_id: str) -> boo
                     enable_response = await client.post(enable_url, headers=headers, json={})
                     
                     if enable_response.status_code in [200, 201]:
-                        log.info(f"✅ 成功启用服务: {service}")
+                        logger.info(f"✅ 成功启用服务: {service}")
                     elif enable_response.status_code == 400:
                         error_data = enable_response.json()
                         if "already enabled" in error_data.get("error", {}).get("message", "").lower():
-                            log.info(f"✅ 服务 {service} 已经启用")
+                            logger.info(f"✅ 服务 {service} 已经启用")
                         else:
-                            log.warning(f"⚠️ 启用服务 {service} 时出现警告: {error_data}")
+                            logger.warning(f"⚠️ 启用服务 {service} 时出现警告: {error_data}")
                     else:
-                        log.warning(f"⚠️ 启用服务 {service} 失败: {enable_response.status_code} - {enable_response.text}")
+                        logger.warning(f"⚠️ 启用服务 {service} 失败: {enable_response.status_code} - {enable_response.text}")
                         
                 except Exception as e:
-                    log.warning(f"⚠️ 启用服务 {service} 时发生异常: {e}")
+                    logger.warning(f"⚠️ 启用服务 {service} 时发生异常: {e}")
                     
         return True
         
     except Exception as e:
-        log.error(f"启用API服务时发生错误: {e}")
+        logger.error(f"启用API服务时发生错误: {e}")
         return False
 
 
@@ -191,12 +191,12 @@ async def get_user_projects(credentials: Credentials) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=30.0) as client:
             # 使用v3 API的projects:search端点
             url = "https://cloudresourcemanager.googleapis.com/v3/projects:search"
-            log.info(f"正在调用API: {url}")
+            logger.info(f"正在调用API: {url}")
             response = await client.get(url, headers=headers)
             
-            log.info(f"API响应状态码: {response.status_code}")
+            logger.info(f"API响应状态码: {response.status_code}")
             if response.status_code != 200:
-                log.error(f"API响应内容: {response.text}")
+                logger.error(f"API响应内容: {response.text}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -206,10 +206,10 @@ async def get_user_projects(credentials: Credentials) -> List[Dict[str, Any]]:
                     project for project in projects 
                     if project.get('state') == 'ACTIVE'
                 ]
-                log.info(f"获取到 {len(active_projects)} 个活跃项目")
+                logger.info(f"获取到 {len(active_projects)} 个活跃项目")
                 return active_projects
             elif response.status_code == 403:
-                log.warning(f"没有权限访问项目列表: {response.text}")
+                logger.warning(f"没有权限访问项目列表: {response.text}")
                 # 尝试用户信息API来获取一些线索
                 try:
                     userinfo_response = await client.get(
@@ -218,16 +218,16 @@ async def get_user_projects(credentials: Credentials) -> List[Dict[str, Any]]:
                     )
                     if userinfo_response.status_code == 200:
                         userinfo = userinfo_response.json()
-                        log.info(f"获取到用户信息: {userinfo.get('email')}")
+                        logger.info(f"获取到用户信息: {userinfo.get('email')}")
                 except:
                     pass
                 return []
             else:
-                log.warning(f"获取项目列表失败: {response.status_code} - {response.text}")
+                logger.warning(f"获取项目列表失败: {response.status_code} - {response.text}")
                 return []
                 
     except Exception as e:
-        log.error(f"获取用户项目列表失败: {e}")
+        logger.error(f"获取用户项目列表失败: {e}")
         return []
 
 
@@ -241,13 +241,13 @@ async def select_default_project(projects: List[Dict[str, Any]]) -> Optional[str
         display_name = project.get('displayName', '').lower()
         project_id = project.get('projectId', '')
         if 'default' in display_name or 'default' in project_id.lower():
-            log.info(f"选择默认项目: {project_id} ({project.get('displayName', project_id)})")
+            logger.info(f"选择默认项目: {project_id} ({project.get('displayName', project_id)})")
             return project_id
     
     # 策略2：选择第一个项目
     first_project = projects[0]
     project_id = first_project.get('projectId', '')
-    log.info(f"选择第一个项目作为默认: {project_id} ({first_project.get('displayName', project_id)})")
+    logger.info(f"选择第一个项目作为默认: {project_id} ({first_project.get('displayName', project_id)})")
     return project_id
 
 
@@ -262,10 +262,10 @@ async def auto_detect_project_id() -> Optional[str]:
             )
             if response.status_code == 200:
                 project_id = response.text.strip()
-                log.info(f"从Google Cloud Metadata自动检测到项目ID: {project_id}")
+                logger.info(f"从Google Cloud Metadata自动检测到项目ID: {project_id}")
                 return project_id
     except Exception as e:
-        log.debug(f"无法从Metadata服务获取项目ID: {e}")
+        logger.debug(f"无法从Metadata服务获取项目ID: {e}")
     
     # 尝试从gcloud配置获取默认项目
     try:
@@ -278,12 +278,12 @@ async def auto_detect_project_id() -> Optional[str]:
         if result.returncode == 0 and result.stdout.strip():
             project_id = result.stdout.strip()
             if project_id != "(unset)":
-                log.info(f"从gcloud配置自动检测到项目ID: {project_id}")
+                logger.info(f"从gcloud配置自动检测到项目ID: {project_id}")
                 return project_id
     except Exception as e:
-        log.debug(f"无法从gcloud配置获取项目ID: {e}")
+        logger.debug(f"无法从gcloud配置获取项目ID: {e}")
     
-    log.info("无法自动检测项目ID，将需要用户手动输入")
+    logger.info("无法自动检测项目ID，将需要用户手动输入")
     return None
 
 
@@ -304,9 +304,9 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
                 name=f"OAuth-Server-{callback_port}"
             )
             server_thread.start()
-            log.info(f"OAuth回调服务器已启动，端口: {callback_port}")
+            logger.info(f"OAuth回调服务器已启动，端口: {callback_port}")
         except Exception as e:
-            log.error(f"启动回调服务器失败: {e}")
+            logger.error(f"启动回调服务器失败: {e}")
             return {
                 'success': False,
                 'error': f'无法启动OAuth回调服务器，端口{callback_port}: {str(e)}'
@@ -362,9 +362,9 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
         # 清理过期的流程（30分钟）
         cleanup_expired_flows()
         
-        log.info(f"OAuth流程已创建: state={state}, project_id={project_id}")
-        log.info(f"用户需要访问认证URL，然后OAuth会回调到 {callback_url}")
-        log.info(f"为此认证流程分配的端口: {callback_port}")
+        logger.info(f"OAuth流程已创建: state={state}, project_id={project_id}")
+        logger.info(f"用户需要访问认证URL，然后OAuth会回调到 {callback_url}")
+        logger.info(f"为此认证流程分配的端口: {callback_port}")
         
         return {
             'auth_url': auth_url,
@@ -376,7 +376,7 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
         }
         
     except Exception as e:
-        log.error(f"创建认证URL失败: {e}")
+        logger.error(f"创建认证URL失败: {e}")
         return {
             'success': False,
             'error': str(e)
@@ -386,20 +386,20 @@ def create_auth_url(project_id: Optional[str] = None, user_session: str = None) 
 def wait_for_callback_sync(state: str, timeout: int = 300) -> Optional[str]:
     """同步等待OAuth回调完成，使用对应流程的专用服务器"""
     if state not in auth_flows:
-        log.error(f"未找到状态为 {state} 的认证流程")
+        logger.error(f"未找到状态为 {state} 的认证流程")
         return None
     
     flow_data = auth_flows[state]
     callback_port = flow_data['callback_port']
     
     # 服务器已经在create_auth_url时启动了，这里只需要等待
-    log.info(f"等待OAuth回调完成，端口: {callback_port}")
+    logger.info(f"等待OAuth回调完成，端口: {callback_port}")
     
     # 等待回调完成
     start_time = time.time()
     while time.time() - start_time < timeout:
         if flow_data.get('code'):
-            log.info(f"OAuth回调成功完成")
+            logger.info(f"OAuth回调成功完成")
             return flow_data['code']
         time.sleep(0.5)  # 每0.5秒检查一次
         
@@ -407,7 +407,7 @@ def wait_for_callback_sync(state: str, timeout: int = 300) -> Optional[str]:
         if state in auth_flows:
             flow_data = auth_flows[state]
     
-    log.warning(f"等待OAuth回调超时 ({timeout}秒)")
+    logger.warning(f"等待OAuth回调超时 ({timeout}秒)")
     return None
 
 
@@ -454,12 +454,12 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
         
         # 如果需要自动检测项目ID且没有提供项目ID
         if flow_data.get('auto_project_detection', False) and not project_id:
-            log.info("尝试自动检测项目ID...")
+            logger.info("尝试自动检测项目ID...")
             detected_project_id = await auto_detect_project_id()
             if detected_project_id:
                 project_id = detected_project_id
                 flow_data['project_id'] = project_id
-                log.info(f"自动检测到项目ID: {project_id}")
+                logger.info(f"自动检测到项目ID: {project_id}")
             else:
                 return {
                     'success': False,
@@ -479,7 +479,7 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
         
         # 如果还没有授权码，需要等待回调
         if not flow_data.get('code'):
-            log.info(f"等待用户完成OAuth授权 (state: {state})")
+            logger.info(f"等待用户完成OAuth授权 (state: {state})")
             auth_code = wait_for_callback_sync(state)
             
             if not auth_code:
@@ -512,9 +512,9 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
             
             # 如果需要自动检测项目ID且没有提供项目ID
             if flow_data.get('auto_project_detection', False) and not project_id:
-                log.info("尝试通过API获取用户项目列表...")
-                log.info(f"使用的token: {credentials.token[:20]}...")
-                log.info(f"Token过期时间: {credentials.expiry}")
+                logger.info("尝试通过API获取用户项目列表...")
+                logger.info(f"使用的token: {credentials.token[:20]}...")
+                logger.info(f"Token过期时间: {credentials.expiry}")
                 user_projects = await get_user_projects(credentials)
                 
                 if user_projects:
@@ -523,13 +523,13 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
                         project_id = user_projects[0].get('projectId')
                         if project_id:
                             flow_data['project_id'] = project_id
-                            log.info(f"自动选择唯一项目: {project_id}")
+                            logger.info(f"自动选择唯一项目: {project_id}")
                     # 如果有多个项目，尝试选择默认项目
                     else:
                         project_id = await select_default_project(user_projects)
                         if project_id:
                             flow_data['project_id'] = project_id
-                            log.info(f"自动选择默认项目: {project_id}")
+                            logger.info(f"自动选择默认项目: {project_id}")
                         else:
                             # 返回项目列表让用户选择
                             return {
@@ -593,11 +593,11 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
                         port = flow_data_to_clean.get('callback_port')
                         async_shutdown_server(server, port)
                 except Exception as e:
-                    log.debug(f"启动异步关闭服务器时出错: {e}")
+                    logger.debug(f"启动异步关闭服务器时出错: {e}")
                 
                 del auth_flows[state]
             
-            log.info("OAuth认证成功，凭证已保存")
+            logger.info("OAuth认证成功，凭证已保存")
             return {
                 'success': True,
                 'credentials': creds_data,
@@ -606,7 +606,7 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
             }
             
         except Exception as e:
-            log.error(f"获取凭证失败: {e}")
+            logger.error(f"获取凭证失败: {e}")
             return {
                 'success': False,
                 'error': f'获取凭证失败: {str(e)}'
@@ -615,7 +615,7 @@ async def complete_auth_flow(project_id: Optional[str] = None, user_session: str
             oauthlib.oauth2.rfc6749.parameters.validate_token_parameters = original_validate
             
     except Exception as e:
-        log.error(f"完成认证流程失败: {e}")
+        logger.error(f"完成认证流程失败: {e}")
         return {
             'success': False,
             'error': str(e)
@@ -627,100 +627,100 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
     import asyncio
     
     try:
-        log.info(f"[ASYNC] asyncio_complete_auth_flow开始执行: project_id={project_id}, user_session={user_session}")
+        logger.info(f"[ASYNC] asyncio_complete_auth_flow开始执行: project_id={project_id}, user_session={user_session}")
         
         # 查找对应的认证流程
         state = None
         flow_data = None
         
-        log.debug(f"[ASYNC] 当前所有auth_flows: {list(auth_flows.keys())}")
+        logger.debug(f"[ASYNC] 当前所有auth_flows: {list(auth_flows.keys())}")
         
         # 如果指定了project_id，先尝试匹配指定的项目
         if project_id:
-            log.info(f"[ASYNC] 尝试匹配指定的项目ID: {project_id}")
+            logger.info(f"[ASYNC] 尝试匹配指定的项目ID: {project_id}")
             for s, data in auth_flows.items():
                 if data['project_id'] == project_id:
                     # 如果指定了用户会话，优先匹配相同会话的流程
                     if user_session and data.get('user_session') == user_session:
                         state = s
                         flow_data = data
-                        log.info(f"[ASYNC] 找到匹配的用户会话: {s}")
+                        logger.info(f"[ASYNC] 找到匹配的用户会话: {s}")
                         break
                     # 如果没有指定会话，或没找到匹配会话的流程，使用第一个匹配项目ID的
                     elif not state:
                         state = s
                         flow_data = data
-                        log.info(f"[ASYNC] 找到匹配的项目ID: {s}")
+                        logger.info(f"[ASYNC] 找到匹配的项目ID: {s}")
         
         # 如果没有指定项目ID或没找到匹配的，查找需要自动检测项目ID的流程
         if not state:
-            log.info(f"[ASYNC] 没有找到指定项目的流程，查找自动检测流程")
+            logger.info(f"[ASYNC] 没有找到指定项目的流程，查找自动检测流程")
             for s, data in auth_flows.items():
-                log.debug(f"[ASYNC] 检查流程 {s}: auto_project_detection={data.get('auto_project_detection', False)}")
+                logger.debug(f"[ASYNC] 检查流程 {s}: auto_project_detection={data.get('auto_project_detection', False)}")
                 if data.get('auto_project_detection', False):
                     # 如果指定了用户会话，优先匹配相同会话的流程
                     if user_session and data.get('user_session') == user_session:
                         state = s
                         flow_data = data
-                        log.info(f"[ASYNC] 找到匹配用户会话的自动检测流程: {s}")
+                        logger.info(f"[ASYNC] 找到匹配用户会话的自动检测流程: {s}")
                         break
                     # 使用第一个找到的需要自动检测的流程
                     elif not state:
                         state = s
                         flow_data = data
-                        log.info(f"[ASYNC] 找到自动检测流程: {s}")
+                        logger.info(f"[ASYNC] 找到自动检测流程: {s}")
         
         if not state or not flow_data:
-            log.error(f"[ASYNC] 未找到认证流程: state={state}, flow_data存在={bool(flow_data)}")
-            log.debug(f"[ASYNC] 当前所有flow_data: {list(auth_flows.keys())}")
+            logger.error(f"[ASYNC] 未找到认证流程: state={state}, flow_data存在={bool(flow_data)}")
+            logger.debug(f"[ASYNC] 当前所有flow_data: {list(auth_flows.keys())}")
             return {
                 'success': False,
                 'error': '未找到对应的认证流程，请先点击获取认证链接'
             }
         
-        log.info(f"[ASYNC] 找到认证流程: state={state}")
-        log.info(f"[ASYNC] flow_data内容: project_id={flow_data.get('project_id')}, auto_project_detection={flow_data.get('auto_project_detection')}")
-        log.info(f"[ASYNC] 传入的project_id参数: {project_id}")
+        logger.info(f"[ASYNC] 找到认证流程: state={state}")
+        logger.info(f"[ASYNC] flow_data内容: project_id={flow_data.get('project_id')}, auto_project_detection={flow_data.get('auto_project_detection')}")
+        logger.info(f"[ASYNC] 传入的project_id参数: {project_id}")
         
         # 如果需要自动检测项目ID且没有提供项目ID
-        log.info(f"[ASYNC] 检查auto_project_detection条件: auto_project_detection={flow_data.get('auto_project_detection', False)}, not project_id={not project_id}")
+        logger.info(f"[ASYNC] 检查auto_project_detection条件: auto_project_detection={flow_data.get('auto_project_detection', False)}, not project_id={not project_id}")
         if flow_data.get('auto_project_detection', False) and not project_id:
-            log.info("[ASYNC] 进入自动检测项目ID分支")
-            log.info("尝试自动检测项目ID...")
+            logger.info("[ASYNC] 进入自动检测项目ID分支")
+            logger.info("尝试自动检测项目ID...")
             try:
                 detected_project_id = await auto_detect_project_id()
-                log.info(f"[ASYNC] auto_detect_project_id返回: {detected_project_id}")
+                logger.info(f"[ASYNC] auto_detect_project_id返回: {detected_project_id}")
                 if detected_project_id:
                     project_id = detected_project_id
                     flow_data['project_id'] = project_id
-                    log.info(f"自动检测到项目ID: {project_id}")
+                    logger.info(f"自动检测到项目ID: {project_id}")
                 else:
-                    log.info("[ASYNC] 环境自动检测失败，跳过OAuth检查，直接进入等待阶段")
+                    logger.info("[ASYNC] 环境自动检测失败，跳过OAuth检查，直接进入等待阶段")
             except Exception as e:
-                log.error(f"[ASYNC] auto_detect_project_id发生异常: {e}")
+                logger.error(f"[ASYNC] auto_detect_project_id发生异常: {e}")
         elif not project_id:
-            log.info("[ASYNC] 进入project_id检查分支")
+            logger.info("[ASYNC] 进入project_id检查分支")
             project_id = flow_data.get('project_id')
             if not project_id:
-                log.error("[ASYNC] 缺少项目ID，返回错误")
+                logger.error("[ASYNC] 缺少项目ID，返回错误")
                 return {
                     'success': False,
                     'error': '缺少项目ID，请指定项目ID',
                     'requires_manual_project_id': True
                 }
         else:
-            log.info(f"[ASYNC] 使用提供的项目ID: {project_id}")
+            logger.info(f"[ASYNC] 使用提供的项目ID: {project_id}")
         
         # 检查是否已经有授权码
-        log.info(f"[ASYNC] 开始检查OAuth授权码...")
+        logger.info(f"[ASYNC] 开始检查OAuth授权码...")
         max_wait_time = 60  # 最多等待60秒
         wait_interval = 1   # 每秒检查一次
         waited = 0
         
         while waited < max_wait_time:
-            log.debug(f"[ASYNC] 等待OAuth授权码... ({waited}/{max_wait_time}秒)")
+            logger.debug(f"[ASYNC] 等待OAuth授权码... ({waited}/{max_wait_time}秒)")
             if flow_data.get('code'):
-                log.info(f"[ASYNC] 检测到OAuth授权码，开始处理凭证 (等待时间: {waited}秒)")
+                logger.info(f"[ASYNC] 检测到OAuth授权码，开始处理凭证 (等待时间: {waited}秒)")
                 break
             
             # 异步等待
@@ -730,10 +730,10 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
             # 刷新flow_data引用，因为可能被回调更新了
             if state in auth_flows:
                 flow_data = auth_flows[state]
-                log.debug(f"[ASYNC] 刷新flow_data: completed={flow_data.get('completed')}, code存在={bool(flow_data.get('code'))}")
+                logger.debug(f"[ASYNC] 刷新flow_data: completed={flow_data.get('completed')}, code存在={bool(flow_data.get('code'))}")
         
         if not flow_data.get('code'):
-            log.error(f"[ASYNC] 等待OAuth回调超时，等待了{waited}秒")
+            logger.error(f"[ASYNC] 等待OAuth回调超时，等待了{waited}秒")
             return {
                 'success': False,
                 'error': '等待OAuth回调超时，请确保完成了浏览器中的认证并看到成功页面'
@@ -742,7 +742,7 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
         flow = flow_data['flow']
         auth_code = flow_data['code']
         
-        log.info(f"[ASYNC] 开始使用授权码获取凭证: code={'***' + auth_code[-4:] if auth_code else 'None'}")
+        logger.info(f"[ASYNC] 开始使用授权码获取凭证: code={'***' + auth_code[-4:] if auth_code else 'None'}")
         
         # 使用认证代码获取凭证
         import oauthlib.oauth2.rfc6749.parameters
@@ -757,18 +757,18 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
         oauthlib.oauth2.rfc6749.parameters.validate_token_parameters = patched_validate
         
         try:
-            log.info(f"[ASYNC] 调用flow.fetch_token...")
+            logger.info(f"[ASYNC] 调用flow.fetch_token...")
             flow.fetch_token(code=auth_code)
             credentials = flow.credentials
-            log.info(f"[ASYNC] 成功获取凭证，token前缀: {credentials.token[:20] if credentials.token else 'None'}...")
+            logger.info(f"[ASYNC] 成功获取凭证，token前缀: {credentials.token[:20] if credentials.token else 'None'}...")
             
-            log.info(f"[ASYNC] 检查是否需要项目检测: auto_project_detection={flow_data.get('auto_project_detection')}, project_id={project_id}")
+            logger.info(f"[ASYNC] 检查是否需要项目检测: auto_project_detection={flow_data.get('auto_project_detection')}, project_id={project_id}")
             
             # 如果需要自动检测项目ID且没有提供项目ID
             if flow_data.get('auto_project_detection', False) and not project_id:
-                log.info("尝试通过API获取用户项目列表...")
-                log.info(f"使用的token: {credentials.token[:20]}...")
-                log.info(f"Token过期时间: {credentials.expiry}")
+                logger.info("尝试通过API获取用户项目列表...")
+                logger.info(f"使用的token: {credentials.token[:20]}...")
+                logger.info(f"Token过期时间: {credentials.expiry}")
                 user_projects = await get_user_projects(credentials)
                 
                 if user_projects:
@@ -777,18 +777,18 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
                         project_id = user_projects[0].get('projectId')
                         if project_id:
                             flow_data['project_id'] = project_id
-                            log.info(f"自动选择唯一项目: {project_id}")
+                            logger.info(f"自动选择唯一项目: {project_id}")
                             # 自动启用必需的API服务
-                            log.info("正在自动启用必需的API服务...")
+                            logger.info("正在自动启用必需的API服务...")
                             await enable_required_apis(credentials, project_id)
                     # 如果有多个项目，尝试选择默认项目
                     else:
                         project_id = await select_default_project(user_projects)
                         if project_id:
                             flow_data['project_id'] = project_id
-                            log.info(f"自动选择默认项目: {project_id}")
+                            logger.info(f"自动选择默认项目: {project_id}")
                             # 自动启用必需的API服务
-                            log.info("正在自动启用必需的API服务...")
+                            logger.info("正在自动启用必需的API服务...")
                             await enable_required_apis(credentials, project_id)
                         else:
                             # 返回项目列表让用户选择
@@ -814,7 +814,7 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
                     }
             elif project_id:
                 # 如果已经有项目ID（手动提供或环境检测），也尝试启用API服务
-                log.info("正在为已提供的项目ID自动启用必需的API服务...")
+                logger.info("正在为已提供的项目ID自动启用必需的API服务...")
                 await enable_required_apis(credentials, project_id)
             
             # 如果仍然没有项目ID，返回错误
@@ -857,11 +857,11 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
                         port = flow_data_to_clean.get('callback_port')
                         async_shutdown_server(server, port)
                 except Exception as e:
-                    log.debug(f"启动异步关闭服务器时出错: {e}")
+                    logger.debug(f"启动异步关闭服务器时出错: {e}")
                 
                 del auth_flows[state]
             
-            log.info("OAuth认证成功，凭证已保存")
+            logger.info("OAuth认证成功，凭证已保存")
             return {
                 'success': True,
                 'credentials': creds_data,
@@ -870,7 +870,7 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
             }
             
         except Exception as e:
-            log.error(f"获取凭证失败: {e}")
+            logger.error(f"获取凭证失败: {e}")
             return {
                 'success': False,
                 'error': f'获取凭证失败: {str(e)}'
@@ -879,7 +879,7 @@ async def asyncio_complete_auth_flow(project_id: Optional[str] = None, user_sess
             oauthlib.oauth2.rfc6749.parameters.validate_token_parameters = original_validate
             
     except Exception as e:
-        log.error(f"异步完成认证流程失败: {e}")
+        logger.error(f"异步完成认证流程失败: {e}")
         return {
             'success': False,
             'error': str(e)
@@ -919,7 +919,7 @@ def save_credentials(creds: Credentials, project_id: str) -> str:
     with open(file_path, "w", encoding='utf-8') as f:
         json.dump(creds_data, f, indent=2, ensure_ascii=False)
     
-    log.info(f"凭证已保存到: {file_path}")
+    logger.info(f"凭证已保存到: {file_path}")
     return file_path
 
 
@@ -935,10 +935,10 @@ def async_shutdown_server(server, port):
                     server.shutdown()
                     server.server_close()
                     shutdown_completed.set()
-                    log.info(f"已关闭端口 {port} 的OAuth回调服务器")
+                    logger.info(f"已关闭端口 {port} 的OAuth回调服务器")
                 except Exception as e:
                     shutdown_completed.set()
-                    log.debug(f"关闭服务器时出错: {e}")
+                    logger.debug(f"关闭服务器时出错: {e}")
             
             # 在单独线程中执行关闭操作
             shutdown_worker = threading.Thread(target=do_shutdown, daemon=True)
@@ -946,17 +946,17 @@ def async_shutdown_server(server, port):
             
             # 等待最多5秒，如果超时就放弃等待
             if shutdown_completed.wait(timeout=5):
-                log.debug(f"端口 {port} 服务器关闭完成")
+                logger.debug(f"端口 {port} 服务器关闭完成")
             else:
-                log.warning(f"端口 {port} 服务器关闭超时，但不阻塞主流程")
+                logger.warning(f"端口 {port} 服务器关闭超时，但不阻塞主流程")
                 
         except Exception as e:
-            log.debug(f"异步关闭服务器时出错: {e}")
+            logger.debug(f"异步关闭服务器时出错: {e}")
     
     # 在后台线程中关闭服务器，不阻塞主流程
     shutdown_thread = threading.Thread(target=shutdown_server_async, daemon=True)
     shutdown_thread.start()
-    log.debug(f"开始异步关闭端口 {port} 的OAuth回调服务器")
+    logger.debug(f"开始异步关闭端口 {port} 的OAuth回调服务器")
 
 def cleanup_expired_flows():
     """清理过期的认证流程 - 内存优化版本"""
@@ -981,20 +981,20 @@ def cleanup_expired_flows():
                     port = flow_data.get('callback_port')
                     async_shutdown_server(server, port)
             except Exception as e:
-                log.debug(f"清理过期流程时启动异步关闭服务器失败: {e}")
+                logger.debug(f"清理过期流程时启动异步关闭服务器失败: {e}")
             
             # 显式清理流程数据
             flow_data.clear()
             del auth_flows[state]
     
     if expired_states:
-        log.info(f"清理了 {len(expired_states)} 个过期的认证流程")
+        logger.info(f"清理了 {len(expired_states)} 个过期的认证流程")
     
     # 当字典过大时，主动触发垃圾回收
     if len(auth_flows) > 50:
         import gc
         gc.collect()
-        log.debug(f"触发垃圾回收，当前活跃认证流程数: {len(auth_flows)}")
+        logger.debug(f"触发垃圾回收，当前活跃认证流程数: {len(auth_flows)}")
 
 
 def get_auth_status(project_id: str) -> Dict[str, Any]:
@@ -1072,7 +1072,7 @@ def validate_credential_file(file_content: str) -> Dict[str, Any]:
         
         # 检查project_id
         if 'project_id' not in creds_data:
-            log.warning("认证文件缺少project_id字段")
+            logger.warning("认证文件缺少project_id字段")
         
         return {
             'valid': True,
@@ -1127,7 +1127,7 @@ def save_uploaded_credential(file_content: str, original_filename: str) -> Dict[
         with open(file_path, "w", encoding='utf-8') as f:
             json.dump(creds_data, f, indent=2, ensure_ascii=False)
         
-        log.info(f"认证文件已上传保存: {file_path}")
+        logger.info(f"认证文件已上传保存: {file_path}")
         
         return {
             'success': True,
@@ -1136,7 +1136,7 @@ def save_uploaded_credential(file_content: str, original_filename: str) -> Dict[
         }
         
     except Exception as e:
-        log.error(f"保存上传文件失败: {e}")
+        logger.error(f"保存上传文件失败: {e}")
         return {
             'success': False,
             'error': str(e)

@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
-from log import log
+from log import logger
 import config
 from .auth_api import (
     create_auth_url, get_auth_status,
@@ -44,13 +44,13 @@ class ConnectionManager:
             return False
         await websocket.accept()
         self.active_connections.append(websocket)
-        log.debug(f"WebSocket连接建立，当前连接数: {len(self.active_connections)}")
+        logger.debug(f"WebSocket连接建立，当前连接数: {len(self.active_connections)}")
         return True
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
-        log.debug(f"WebSocket连接断开，当前连接数: {len(self.active_connections)}")
+        logger.debug(f"WebSocket连接断开，当前连接数: {len(self.active_connections)}")
 
     async def broadcast(self, message: str):
         for connection in self.active_connections[:]:
@@ -245,8 +245,8 @@ async def get_config(token: str = Depends(verify_token)):
     add_config("retry_429_max_retries", config.get_retry_429_max_retries, "RETRY_429_MAX_RETRIES")
     add_config("retry_429_enabled", config.get_retry_429_enabled, "RETRY_429_ENABLED")
     add_config("retry_429_interval", config.get_retry_429_interval, "RETRY_429_INTERVAL")
+    # 添加配置项
     add_config("log_level", config.get_log_level, "LOG_LEVEL")
-    add_config("log_file", config.get_log_file, "LOG_FILE")
     add_config("anti_truncation_max_attempts", config.get_anti_truncation_max_attempts, "ANTI_TRUNCATION_MAX_ATTEMPTS")
     add_config("bot_api_key", config.get_bot_api_key, "BOT_API_KEY")
 
@@ -259,7 +259,7 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         config.save_config_to_toml(request.config)
         return JSONResponse(content={"message": "配置保存成功，部分配置项可能需要重启生效"})
     except Exception as e:
-        log.error(f"保存配置失败: {e}")
+        logger.error(f"保存配置失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -291,76 +291,131 @@ async def download_all_creds_backup(token: str = Depends(verify_token)):
 @router.post("/auth/logs/clear")
 async def clear_logs(token: str = Depends(verify_token)):
     """清空日志文件"""
-    log_file_path = config.get_log_file()
-    if os.path.exists(log_file_path):
-        try:
-            with open(log_file_path, 'w', encoding='utf-8') as f:
-                f.write('')
-            log.info(f"日志文件已清空: {log_file_path}")
-            await manager.broadcast("--- 日志文件已清空 ---")
-            return JSONResponse(content={"message": f"日志文件已清空: {os.path.basename(log_file_path)}"})
-        except Exception as e:
-            log.error(f"清空日志文件失败: {e}")
-            raise HTTPException(status_code=500, detail=f"清空日志文件失败: {str(e)}")
+    import glob
+    
+    # 获取logs目录路径
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+    if not os.path.exists(logs_dir):
+        return JSONResponse(content={"message": "日志目录不存在"})
+        
+    try:
+        # 清空所有日志文件
+        log_files = glob.glob(os.path.join(logs_dir, "*.txt"))
+        for log_file in log_files:
+            with open(log_file, 'w', encoding='utf-8') as f:
+                pass
+        logger.info(f"所有日志文件已清空")
+        await manager.broadcast("--- 日志文件已清空 ---")
+        return JSONResponse(content={"message": "所有日志文件已清空"})
+    except Exception as e:
+        logger.error(f"清空日志文件失败: {e}")
+        raise HTTPException(status_code=500, detail=f"清空日志文件失败: {str(e)}")
     else:
         return JSONResponse(content={"message": "日志文件不存在"})
 
 @router.get("/auth/logs/download")
 async def download_logs(token: str = Depends(verify_token)):
-    """下载日志文件"""
-    log_file_path = config.get_log_file()
-    if not os.path.exists(log_file_path) or os.path.getsize(log_file_path) == 0:
+    """下载日志文件夹压缩包"""
+    import zipfile
+    import tempfile
+    import shutil
+    
+    # 获取logs目录路径
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+    if not os.path.exists(logs_dir) or not os.listdir(logs_dir):
         raise HTTPException(status_code=404, detail="日志文件不存在或为空")
     
+    # 创建临时文件用于存储压缩包
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as temp_file:
+        temp_path = temp_file.name
+    
+    # 创建压缩包
+    with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(logs_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, os.path.dirname(logs_dir))
+                zipf.write(file_path, arcname)
+    
+    # 设置响应头，使浏览器下载文件
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"gcli2api_logs_{timestamp}.txt"
-    return FileResponse(path=log_file_path, filename=filename, media_type='text/plain')
+    filename = f"gcli2api_logs_{timestamp}.zip"
+    
+    # 返回压缩包
+    return FileResponse(
+        path=temp_path, 
+        filename=filename, 
+        media_type='application/zip',
+        background=BackgroundTask(lambda: os.unlink(temp_path))  # 下载完成后删除临时文件
+    )
 
 @router.websocket("/auth/logs/stream")
 async def websocket_logs(websocket: WebSocket):
-    """WebSocket端点，用于实时日志流"""
-    if not await manager.connect(websocket):
-        return
-
-    log_file_path = config.get_log_file()
+    """WebSocket日志流"""
+    await websocket.accept()
     try:
-        if os.path.exists(log_file_path):
-            with open(log_file_path, "r", encoding="utf-8") as f:
-                # 发送最后50行
-                lines = f.readlines()
-                for line in lines[-50:]:
-                    if line.strip():
-                        await websocket.send_text(line.strip())
-                last_pos = f.tell()
-        else:
-            last_pos = 0
-
-        while websocket.client_state == WebSocketState.CONNECTED:
-            await asyncio.sleep(1)
+        # 获取logs目录路径
+        logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+        log_file_path = os.path.join(logs_dir, "log.txt")
+        last_pos = 0
+        last_inode = 0
+        
+        try:
+            # 发送现有日志
             if os.path.exists(log_file_path):
                 with open(log_file_path, "r", encoding="utf-8") as f:
-                    # 获取文件大小
-                    f.seek(0, os.SEEK_END)
-                    file_size = f.tell()
-                    
-                    # 如果文件被截断（如清空）
-                    if file_size < last_pos:
-                        # 文件确实被截断了，重置位置并只发送一次通知
-                        last_pos = 0
-                        f.seek(0)
-                        await websocket.send_text("--- 日志已清空 ---")
-                    
-                    # 从上次位置继续读取
-                    f.seek(last_pos)
-                    new_content = f.read()
-                    if new_content:
-                        for line in new_content.splitlines():
-                            if line.strip():
-                                await websocket.send_text(line.strip())
+                    # 发送最后50行
+                    lines = f.readlines()
+                    for line in lines[-50:]:
+                        if line.strip():
+                            await websocket.send_text(line.strip())
                     last_pos = f.tell()
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        log.error(f"WebSocket logs error: {e}")
+                    # 获取文件的inode用于检测文件轮转
+                    last_inode = os.stat(log_file_path).st_ino
+            
+            # 注册连接
+            manager.active_connections.append(websocket)
+            logger.debug(f"WebSocket连接建立，当前连接数: {len(manager.active_connections)}")
+            
+            # 保持连接并监听日志更新
+            while websocket.client_state == WebSocketState.CONNECTED:
+                await asyncio.sleep(1)
+                if os.path.exists(log_file_path):
+                    # 检查文件是否被轮转（inode变化）
+                    current_inode = os.stat(log_file_path).st_ino
+                    if current_inode != last_inode:
+                        # 文件被轮转，重置位置并发送通知
+                        last_pos = 0
+                        last_inode = current_inode
+                        await websocket.send_text("--- 日志文件已轮转 ---")
+                    
+                    with open(log_file_path, "r", encoding="utf-8") as f:
+                        # 获取文件大小
+                        f.seek(0, os.SEEK_END)
+                        file_size = f.tell()
+                        
+                        # 如果文件被截断（如清空）
+                        if file_size < last_pos:
+                            # 文件确实被截断了，重置位置并只发送一次通知
+                            last_pos = 0
+                            f.seek(0)
+                            await websocket.send_text("--- 日志已清空 ---")
+                        
+                        # 从上次位置继续读取
+                        f.seek(last_pos)
+                        new_content = f.read()
+                        if new_content:
+                            for line in new_content.splitlines():
+                                if line.strip():
+                                    await websocket.send_text(line.strip())
+                        last_pos = f.tell()
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            logger.error(f"WebSocket日志流错误: {e}")
+            try:
+                await websocket.close()
+            except:
+                pass
     finally:
         manager.disconnect(websocket)

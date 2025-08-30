@@ -82,8 +82,7 @@ ehthumbs.db
 Thumbs.db
 
 # Logs
-*.log
-log.txt
+logs/
 
 # DB
 *.db

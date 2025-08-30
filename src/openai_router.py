@@ -18,7 +18,7 @@ from .user_aware_credential_manager import UserCredentialManager
 from .user_routes import get_user_by_api_key
 from .anti_truncation import apply_anti_truncation_to_stream
 from config import get_available_models, is_fake_streaming_model, is_anti_truncation_model, get_base_model_from_feature_model, get_anti_truncation_max_attempts
-from log import log
+from log import logger
 
 # 创建路由器
 router = APIRouter()
@@ -35,12 +35,12 @@ async def get_user_credential_manager(username: str):
     global user_credential_managers
 
     if username not in user_credential_managers:
-        log.debug(f"创建新的用户凭证管理器实例: {username}")
+        logger.debug(f"创建新的用户凭证管理器实例: {username}")
         user_cred_mgr = UserCredentialManager(username)
         await user_cred_mgr.initialize()
         user_credential_managers[username] = user_cred_mgr
     else:
-        log.debug(f"复用现有的用户凭证管理器实例: {username}")
+        logger.debug(f"复用现有的用户凭证管理器实例: {username}")
 
     yield user_credential_managers[username]
 
@@ -51,9 +51,9 @@ async def cleanup_user_credential_managers():
         try:
             await manager.close()
         except Exception as e:
-            log.warning(f"关闭用户 {username} 的凭证管理器时出错: {e}")
+            logger.warning(f"关闭用户 {username} 的凭证管理器时出错: {e}")
     user_credential_managers.clear()
-    log.info("已清理所有用户凭证管理器实例缓存")
+    logger.info("已清理所有用户凭证管理器实例缓存")
 
 
 
@@ -92,7 +92,7 @@ async def chat_completions(
     try:
         raw_data = await request.json()
     except Exception as e:
-        log.error(f"Failed to parse JSON request: {e}")
+        logger.error(f"Failed to parse JSON request: {e}")
         return JSONResponse(
             status_code=400,
             content={
@@ -108,7 +108,7 @@ async def chat_completions(
     try:
         request_data = ChatCompletionRequest(**raw_data)
     except Exception as e:
-        log.error(f"Request validation failed: {e}")
+        logger.error(f"Request validation failed: {e}")
         return JSONResponse(
             status_code=400,
             content={
@@ -188,7 +188,7 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
     # 获取凭证
     creds, project_id = await cred_mgr.get_credentials()
     if not creds:
-        log.error("当前无可用凭证")
+        logger.error("当前无可用凭证")
         return JSONResponse(
             status_code=401,
             content={
@@ -207,7 +207,7 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
     try:
         gemini_payload = openai_request_to_gemini(request_data)
     except Exception as e:
-        log.error(f"OpenAI to Gemini conversion failed: {e}")
+        logger.error(f"OpenAI to Gemini conversion failed: {e}")
         return JSONResponse(
             status_code=500,
             content={
@@ -230,7 +230,7 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
     # 处理抗截断 (仅流式传输时有效)
     is_streaming = getattr(request_data, "stream", False)
     if use_anti_truncation and is_streaming:
-        log.info("启用流式抗截断功能")
+        logger.info("启用流式抗截断功能")
         # 使用全局配置
         max_attempts = get_anti_truncation_max_attempts()
         
@@ -243,7 +243,7 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
         
         return await convert_streaming_response(gemini_response, model)
     elif use_anti_truncation and not is_streaming:
-        log.info("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
+        logger.info("抗截断功能仅在流式传输时有效，非流式请求将忽略此设置")
     
     # 发送请求（429重试已在google_api_client中处理）
     is_streaming = getattr(request_data, "stream", False)
@@ -264,7 +264,7 @@ async def process_chat_request(request_data, cred_mgr, model, real_model, use_fa
         return JSONResponse(content=openai_response)
         
     except Exception as e:
-        log.error(f"Response conversion failed: {e}")
+        logger.error(f"Response conversion failed: {e}")
         return JSONResponse(
             status_code=500,
             content={
@@ -321,7 +321,7 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: UserCredentia
             
             try:
                 response_data = json.loads(body_str)
-                log.debug(f"Fake stream response data: {response_data}")
+                logger.debug(f"Fake stream response data: {response_data}")
                 
                 # 从Gemini响应中提取内容，使用思维链分离逻辑
                 content = ""
@@ -336,12 +336,12 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: UserCredentia
                     # OpenAI格式响应
                     content = response_data["choices"][0].get("message", {}).get("content", "")
                 
-                log.debug(f"Extracted content: {content}")
-                log.debug(f"Extracted reasoning: {reasoning_content[:100] if reasoning_content else 'None'}...")
+                logger.debug(f"Extracted content: {content}")
+                logger.debug(f"Extracted reasoning: {reasoning_content[:100] if reasoning_content else 'None'}...")
                 
                 # 如果没有正常内容但有思维内容，给出警告
                 if not content and reasoning_content:
-                    log.warning(f"Fake stream response contains only thinking content: {reasoning_content[:100]}...")
+                    logger.warning(f"Fake stream response contains only thinking content: {reasoning_content[:100]}...")
                     content = "[模型正在思考中，请稍后再试或重新提问]"
                 
                 if content:
@@ -359,7 +359,7 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: UserCredentia
                     }
                     yield f"data: {json.dumps(content_chunk)}\n\n".encode()
                 else:
-                    log.warning(f"No content found in response: {response_data}")
+                    logger.warning(f"No content found in response: {response_data}")
                     # 如果完全没有内容，提供默认回复
                     error_chunk = {
                         "choices": [{
@@ -382,7 +382,7 @@ async def fake_stream_response(api_payload: dict, creds, cred_mgr: UserCredentia
             yield "data: [DONE]\n\n".encode()
             
         except Exception as e:
-            log.error(f"Fake streaming error: {e}")
+            logger.error(f"Fake streaming error: {e}")
             error_chunk = {
                 "choices": [{
                     "index": 0,
@@ -426,7 +426,7 @@ async def convert_streaming_response(gemini_response, model: str) -> StreamingRe
                         continue
             else:
                 # 其他类型的响应，尝试直接处理
-                log.warning(f"Unexpected response type: {type(gemini_response)}")
+                logger.warning(f"Unexpected response type: {type(gemini_response)}")
                 error_chunk = {
                     "id": response_id,
                     "object": "chat.completion.chunk",
@@ -444,7 +444,7 @@ async def convert_streaming_response(gemini_response, model: str) -> StreamingRe
             yield "data: [DONE]\n\n".encode()
             
         except Exception as e:
-            log.error(f"Stream conversion error: {e}")
+            logger.error(f"Stream conversion error: {e}")
             error_chunk = {
                 "id": response_id,
                 "object": "chat.completion.chunk",

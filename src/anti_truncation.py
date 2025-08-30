@@ -6,7 +6,7 @@ import json
 from typing import Dict, Any, AsyncGenerator
 from fastapi.responses import StreamingResponse
 
-from log import log
+from log import logger
 
 # 反截断配置
 DONE_MARKER = "[done]"
@@ -76,7 +76,7 @@ def apply_anti_truncation(payload: Dict[str, Any]) -> Dict[str, Any]:
         request_data["systemInstruction"] = system_instruction
         modified_payload["request"] = request_data
         
-        log.debug("Applied anti-truncation instruction to request")
+        logger.debug("Applied anti-truncation instruction to request")
     
     return modified_payload
 
@@ -102,7 +102,7 @@ class AntiTruncationStreamProcessor:
             # 构建当前请求payload
             current_payload = self._build_current_payload()
             
-            log.debug(f"Anti-truncation attempt {self.current_attempt}/{self.max_attempts}")
+            logger.debug(f"Anti-truncation attempt {self.current_attempt}/{self.max_attempts}")
             
             # 发送请求
             try:
@@ -140,11 +140,11 @@ class AntiTruncationStreamProcessor:
                     if payload_data.strip() == b'[DONE]':
                         # 检查是否找到了done标记
                         if found_done_marker:
-                            log.info("Anti-truncation: Found [done] marker, output complete")
+                            logger.info("Anti-truncation: Found [done] marker, output complete")
                             yield chunk
                             return
                         else:
-                            log.warning("Anti-truncation: Stream ended without [done] marker")
+                            logger.warning("Anti-truncation: Stream ended without [done] marker")
                             # 不发送[DONE]，准备继续
                             break
                     
@@ -158,7 +158,7 @@ class AntiTruncationStreamProcessor:
                             # 检查是否包含done标记
                             if self._check_done_marker_in_chunk_content(content):
                                 found_done_marker = True
-                                log.info("Anti-truncation: Found [done] marker in chunk")
+                                logger.info("Anti-truncation: Found [done] marker in chunk")
                         
                         yield chunk
                         
@@ -176,24 +176,24 @@ class AntiTruncationStreamProcessor:
                 
                 # 最后再检查一次累积的内容（防止done标记跨chunk出现）
                 if self._check_done_marker_in_text(self.collected_content):
-                    log.info("Anti-truncation: Found [done] marker in accumulated content")
+                    logger.info("Anti-truncation: Found [done] marker in accumulated content")
                     yield b'data: [DONE]\n\n'
                     return
                 
                 # 如果没找到done标记且不是最后一次尝试，准备续传
                 if self.current_attempt < self.max_attempts:
-                    log.info(f"Anti-truncation: No [done] marker found in output (length: {len(self.collected_content)}), preparing continuation (attempt {self.current_attempt + 1})")
-                    log.debug(f"Anti-truncation: Current collected content ends with: {'...' + self.collected_content[-100:] if len(self.collected_content) > 100 else self.collected_content}")
+                    logger.info(f"Anti-truncation: No [done] marker found in output (length: {len(self.collected_content)}), preparing continuation (attempt {self.current_attempt + 1})")
+                    logger.debug(f"Anti-truncation: Current collected content ends with: {'...' + self.collected_content[-100:] if len(self.collected_content) > 100 else self.collected_content}")
                     # 在下一次循环中会继续
                     continue
                 else:
                     # 最后一次尝试，直接结束
-                    log.warning("Anti-truncation: Max attempts reached, ending stream")
+                    logger.warning("Anti-truncation: Max attempts reached, ending stream")
                     yield b'data: [DONE]\n\n'
                     return
                 
             except Exception as e:
-                log.error(f"Anti-truncation error in attempt {self.current_attempt}: {str(e)}")
+                logger.error(f"Anti-truncation error in attempt {self.current_attempt}: {str(e)}")
                 if self.current_attempt >= self.max_attempts:
                     # 发送错误chunk
                     error_chunk = {
@@ -209,7 +209,7 @@ class AntiTruncationStreamProcessor:
                 # 否则继续下一次尝试
                 
         # 如果所有尝试都失败了
-        log.error("Anti-truncation: All attempts failed")
+        logger.error("Anti-truncation: All attempts failed")
         yield b'data: [DONE]\n\n'
     
     def _build_current_payload(self) -> Dict[str, Any]:
@@ -295,7 +295,7 @@ class AntiTruncationStreamProcessor:
             has_done_marker = self._check_done_marker_in_text(text_content)
             
             if not has_done_marker and self.current_attempt < self.max_attempts:
-                log.info("Anti-truncation: Non-streaming response needs continuation")
+                logger.info("Anti-truncation: Non-streaming response needs continuation")
                 self.collected_content += text_content
                 # 递归处理续传
                 return await self._handle_non_streaming_response(
@@ -305,7 +305,7 @@ class AntiTruncationStreamProcessor:
             return content.encode()
             
         except Exception as e:
-            log.error(f"Anti-truncation non-streaming error: {str(e)}")
+            logger.error(f"Anti-truncation non-streaming error: {str(e)}")
             return json.dumps({
                 "error": {
                     "message": f"Anti-truncation failed: {str(e)}",

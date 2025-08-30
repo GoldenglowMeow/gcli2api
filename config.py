@@ -21,6 +21,64 @@ AUTO_BAN_ENABLED = os.getenv("AUTO_BAN", "false").lower() in ("true", "1", "yes"
 # 需要自动封禁的错误码 (可通过环境变量 AUTO_BAN_ERROR_CODES 覆盖)
 AUTO_BAN_ERROR_CODES = [400, 403]
 
+# 日志配置
+# 日志文件最大大小（默认500KB）
+MAX_LOG_SIZE = int(os.getenv("MAX_LOG_SIZE", 500 * 1024))  # 500KB
+# 最大保留的日志文件数量
+MAX_LOG_FILES = int(os.getenv("MAX_LOG_FILES", 100))
+# 日志缓冲区大小
+LOG_BUFFER_SIZE = int(os.getenv("LOG_BUFFER_SIZE", 100))
+# 日志刷新间隔（秒）
+LOG_FLUSH_INTERVAL = float(os.getenv("LOG_FLUSH_INTERVAL", 2.0))
+
+def get_max_log_size():
+    """获取日志文件最大大小，优先从配置文件获取，其次从环境变量获取"""
+    try:
+        config_file = os.path.join(CREDENTIALS_DIR, "config.toml")
+        if os.path.exists(config_file):
+            config_data = toml.load(config_file)
+            if "max_log_size" in config_data:
+                return int(config_data["max_log_size"])
+    except Exception as e:
+        print(f"读取max_log_size配置出错: {e}")
+    return MAX_LOG_SIZE
+
+def get_max_log_files():
+    """获取最大保留的日志文件数量，优先从配置文件获取，其次从环境变量获取"""
+    try:
+        config_file = os.path.join(CREDENTIALS_DIR, "config.toml")
+        if os.path.exists(config_file):
+            config_data = toml.load(config_file)
+            if "max_log_files" in config_data:
+                return int(config_data["max_log_files"])
+    except Exception as e:
+        print(f"读取max_log_files配置出错: {e}")
+    return MAX_LOG_FILES
+
+def get_log_buffer_size():
+    """获取日志缓冲区大小，优先从配置文件获取，其次从环境变量获取"""
+    try:
+        config_file = os.path.join(CREDENTIALS_DIR, "config.toml")
+        if os.path.exists(config_file):
+            config_data = toml.load(config_file)
+            if "log_buffer_size" in config_data:
+                return int(config_data["log_buffer_size"])
+    except Exception as e:
+        print(f"读取log_buffer_size配置出错: {e}")
+    return LOG_BUFFER_SIZE
+
+def get_log_flush_interval():
+    """获取日志刷新间隔，优先从配置文件获取，其次从环境变量获取"""
+    try:
+        config_file = os.path.join(CREDENTIALS_DIR, "config.toml")
+        if os.path.exists(config_file):
+            config_data = toml.load(config_file)
+            if "log_flush_interval" in config_data:
+                return float(config_data["log_flush_interval"])
+    except Exception as e:
+        print(f"读取log_flush_interval配置出错: {e}")
+    return LOG_FLUSH_INTERVAL
+
 # Bot API Key配置
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 
@@ -307,16 +365,6 @@ def get_log_level() -> str:
         if level in ["debug", "info", "warning", "error", "critical"]:
             return level
     return "info"
-
-def get_log_file() -> str:
-    """
-    Get log file path.
-    
-    Environment variable: LOG_FILE
-    TOML config key: log_file
-    Default: log.txt
-    """
-    return str(get_config_value("log_file", "log.txt", "LOG_FILE"))
 
 # Model name lists for different features
 BASE_MODELS = [

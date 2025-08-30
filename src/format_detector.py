@@ -2,7 +2,7 @@
 Format detection utilities for supporting both OpenAI and Gemini request formats
 """
 from typing import Dict, Any
-from log import log
+from log import logger
 
 def detect_request_format(data: Dict[str, Any]) -> str:
     """
@@ -36,7 +36,7 @@ def detect_request_format(data: Dict[str, Any]) -> str:
         return "gemini"
     
     # Default to OpenAI if unclear (for backwards compatibility)
-    log.debug(f"Unable to definitively detect format, defaulting to OpenAI. Keys present: {list(data.keys())}")
+    logger.debug(f"Unable to definitively detect format, defaulting to OpenAI. Keys present: {list(data.keys())}")
     return "openai"
 
 def gemini_request_to_openai(gemini_request: Dict[str, Any]) -> Dict[str, Any]:
@@ -161,7 +161,7 @@ def validate_and_normalize_request(data: Dict[str, Any]) -> Dict[str, Any]:
         Normalized request in OpenAI format
     """
     format_type = detect_request_format(data)
-    log.info(f"Detected request format: {format_type}")
+    logger.info(f"Detected request format: {format_type}")
     
     if format_type == "gemini":
         # Convert Gemini format to OpenAI format
